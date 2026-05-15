@@ -86,20 +86,6 @@ st.markdown("""
     font-weight: 600;
 }
 
-.stButton>button:hover,
-.stDownloadButton>button:hover {
-    background-color: #0093d1;
-    color: white;
-}
-
-div[data-baseweb="select"] > div {
-    border-radius: 10px !important;
-}
-
-input, textarea {
-    border-radius: 10px !important;
-}
-
 .validation-good {
     background: #DFF6E5;
     color: #146C2E;
@@ -140,11 +126,11 @@ Prepare CRM-ready lead imports for Microsoft Dynamics
 """, unsafe_allow_html=True)
 
 # =========================================================
-# DROPDOWN VALUES
+# DROPDOWNS
 # =========================================================
 
 MARKET_SEGMENTS = [
-    "Let AI figure it out",
+    "",
     "Aerospace",
     "Automotive",
     "Energy Conversion",
@@ -153,7 +139,7 @@ MARKET_SEGMENTS = [
 ]
 
 MAIN_APPLICATIONS = [
-    "Let AI figure it out",
+    "",
     "Autonomous Systems (Aero)",
     "Avionics System",
     "Electrical Actuators and Servos",
@@ -180,6 +166,19 @@ MAIN_APPLICATIONS = [
     "Transmission"
 ]
 
+INDUSTRY_SECTORS = [
+    "",
+    "Academic - Research or Post-graduate",
+    "Academic - Undergraduate",
+    "Consulting & Engineering Firm",
+    "Defense",
+    "Electrical Utility",
+    "Manufacturer",
+    "Other",
+    "Research Lab - Industrial & Gov.",
+    "Stock - Inventory"
+]
+
 # =========================================================
 # IMPORT SETTINGS
 # =========================================================
@@ -187,10 +186,6 @@ MAIN_APPLICATIONS = [
 st.markdown(
     '<div class="section-title">Global Import Settings</div>',
     unsafe_allow_html=True
-)
-
-st.write(
-    "These values will automatically be applied to all imported rows."
 )
 
 col1, col2, col3 = st.columns(3)
@@ -219,7 +214,7 @@ with col1:
     )
 
     market_segment = st.selectbox(
-        "Market Segment *",
+        "Market Segment",
         MARKET_SEGMENTS
     )
 
@@ -238,7 +233,7 @@ with col2:
     )
 
     main_application = st.selectbox(
-        "Main Application *",
+        "Main Application",
         MAIN_APPLICATIONS
     )
 
@@ -248,9 +243,14 @@ with col3:
         "Source Campaign"
     )
 
+    industry_sector = st.selectbox(
+        "Industry Sector",
+        INDUSTRY_SECTORS
+    )
+
     description = st.text_area(
         "Description",
-        height=140
+        height=120
     )
 
 st.divider()
@@ -292,6 +292,15 @@ FINAL_COLUMNS = [
     "Allow Marketing Communication"
 ]
 
+REQUIRED_FIELDS = [
+    "Subject",
+    "First Name",
+    "Last Name",
+    "Email",
+    "Company Name",
+    "Country"
+]
+
 COLUMN_MAPPING = {
     "firstname": "First Name",
     "first name": "First Name",
@@ -299,12 +308,23 @@ COLUMN_MAPPING = {
 
     "lastname": "Last Name",
     "last name": "Last Name",
+    "lname": "Last Name",
 
     "company": "Company Name",
+    "organization": "Company Name",
+    "org": "Company Name",
 
     "email": "Email",
+    "mail": "Email",
+    "email address": "Email",
 
     "phone": "Business Phone",
+    "telephone": "Business Phone",
+    "mobile": "Business Phone",
+
+    "linkedin": "LinkedIn",
+    "linkedin url": "LinkedIn",
+    "linkedin profile": "LinkedIn",
 
     "country": "Country",
     "country/region": "Country",
@@ -312,7 +332,8 @@ COLUMN_MAPPING = {
     "state": "State or Province",
     "province": "State or Province",
 
-    "linkedin": "LinkedIn"
+    "location": "Location",
+    "city": "Location"
 }
 
 # =========================================================
@@ -339,73 +360,51 @@ def clean_email(email):
     return str(email).strip().lower()
 
 
-def infer_market_segment(row):
+def is_valid_email(email):
 
-    text = " ".join([
-        str(row.get("Company Name", "")),
-        str(row.get("Job Title", "")),
-        str(row.get("Description", "")),
-        str(row.get("Email", ""))
-    ]).lower()
+    if email == "":
+        return False
 
-    if any(x in text for x in [
-        "grid",
-        "utility",
-        "transmission",
-        "distribution",
-        "microgrid",
-        "renewable",
-        "hvdc"
-    ]):
-        return "Power System"
+    pattern = r'^[\\w\\.-]+@[\\w\\.-]+\\.\\w+$'
 
-    if any(x in text for x in [
-        "battery",
-        "ev",
-        "vehicle",
-        "automotive"
-    ]):
-        return "Automotive"
-
-    if any(x in text for x in [
-        "aircraft",
-        "flight",
-        "avionics",
-        "aerospace"
-    ]):
-        return "Aerospace"
-
-    return "Power System"
+    return re.match(pattern, email)
 
 
-def infer_main_application(row):
+def infer_location(location):
 
-    text = " ".join([
-        str(row.get("Company Name", "")),
-        str(row.get("Job Title", "")),
-        str(row.get("Description", "")),
-        str(row.get("Email", ""))
-    ]).lower()
+    location = str(location).lower()
 
-    if "microgrid" in text:
-        return "Microgrid"
+    # Canada
+    if "quebec" in location or "montreal" in location:
+        return ("Canada", "Quebec")
 
-    if "hvdc" in text:
-        return "FACTS & HVDC"
+    if "toronto" in location or "ontario" in location:
+        return ("Canada", "Ontario")
 
-    if "battery" in text:
-        return "BMS Control"
+    if "vancouver" in location:
+        return ("Canada", "British Columbia")
 
-    if "charging" in text:
-        return "Charging"
+    # USA
+    if "california" in location:
+        return ("United States", "California")
 
-    if "distribution" in text:
-        return "Distribution"
+    if "texas" in location:
+        return ("United States", "Texas")
 
-    if "transmission" in text:
-        return "Transmission"
+    if "new york" in location:
+        return ("United States", "New York")
 
-    return "Grid Infrastructure"
+    # Europe
+    if "france" in location or "paris" in location:
+        return ("France", "")
+
+    if "germany" in location:
+        return ("Germany", "")
+
+    if "uk" in location or "united kingdom" in location or "london" in location:
+        return ("United Kingdom", "")
+
+    return ("", "")
 
 # =========================================================
 # PROCESS FILE
@@ -413,6 +412,7 @@ def infer_main_application(row):
 
 if uploaded_file:
 
+    # READ FILE
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
 
@@ -448,7 +448,23 @@ if uploaded_file:
         if col not in df.columns:
             df[col] = ""
 
-    # APPLY GLOBAL VALUES
+    # LOCATION INFERENCE
+    if "Location" in df.columns:
+
+        for idx, row in df.iterrows():
+
+            if row["Country"] == "":
+
+                country, province = infer_location(
+                    row["Location"]
+                )
+
+                df.at[idx, "Country"] = country
+
+                if province != "":
+                    df.at[idx, "State or Province"] = province
+
+    # APPLY GLOBAL SETTINGS
     df["Subject"] = subject
     df["Description"] = description
     df["Lead Source"] = lead_source
@@ -456,31 +472,40 @@ if uploaded_file:
     df["Source Campaign"] = source_campaign
     df["Allow Marketing Communication"] = allow_marketing
 
-    # AI INFERENCE
-    if market_segment == "Let AI figure it out":
-
-        df["Market Segment"] = df.apply(
-            infer_market_segment,
-            axis=1
-        )
-
-    else:
+    if market_segment != "":
         df["Market Segment"] = market_segment
 
-    if main_application == "Let AI figure it out":
-
-        df["Main Application"] = df.apply(
-            infer_main_application,
-            axis=1
-        )
-
-    else:
+    if main_application != "":
         df["Main Application"] = main_application
+
+    if industry_sector != "":
+        df["Industry Sector"] = industry_sector
+
+    # VALIDATION
+    errors = []
+
+    for idx, row in df.iterrows():
+
+        for field in REQUIRED_FIELDS:
+
+            if str(row[field]).strip() == "":
+
+                errors.append(
+                    f"Row {idx + 2}: Missing required field -> {field}"
+                )
+
+        if not is_valid_email(row["Email"]):
+
+            errors.append(
+                f"Row {idx + 2}: Invalid email -> {row['Email']}"
+            )
+
+    # REMOVE DUPLICATES
+    if "Email" in df.columns:
+        df = df.drop_duplicates(subset=["Email"])
 
     # FINAL ORDER
     df = df[FINAL_COLUMNS]
-
-    st.divider()
 
     st.markdown(
         '<div class="section-title">Dynamics-Ready Import File</div>',
@@ -488,6 +513,20 @@ if uploaded_file:
     )
 
     st.dataframe(df, use_container_width=True)
+
+    # VALIDATION RESULTS
+    if len(errors) == 0:
+
+        st.markdown("""
+        <div class="validation-good">
+        File successfully normalized and ready for Dynamics import.
+        </div>
+        """, unsafe_allow_html=True)
+
+    else:
+
+        for error in errors:
+            st.error(error)
 
     # EXPORT
     csv = df.to_csv(index=False).encode("utf-8")
@@ -499,8 +538,29 @@ if uploaded_file:
         mime="text/csv"
     )
 
-    st.markdown("""
-    <div class="validation-good">
-    File successfully normalized and ready for Dynamics import.
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown("---")
+
+st.markdown(
+    """
+    <div style='text-align:center;
+                color:#666;
+                padding-top:20px;
+                padding-bottom:30px;
+                font-size:14px;'>
+
+    Built by
+    <a href="mailto:arnaud.joakim@opal-rt.com"
+       style="color:#00AEEF;
+              text-decoration:none;
+              font-weight:600;">
+       Arnaud Joakim
+    </a>
+
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
