@@ -167,6 +167,8 @@ COLUMN_ALIASES = {
         "tel",
     ],
     "LinkedIn": ["linkedin", "linkedin profile", "linkedin profile url", "linkedin url", "linkedin profile link"],
+    # Keep Location as its own source field so it can be parsed into Country + State/Province.
+    # Do not let a generic "Location" column get consumed by Country or State detection.
     "Country": ["country", "country/region", "country region", "nation"],
     "State or Province": ["state", "province", "state/province", "state or province", "region", "territory"],
     "Description": ["description", "notes", "comment", "comments", "details"],
@@ -477,6 +479,34 @@ def detect_country_from_text(text: str) -> str:
     return ""
 
 
+def infer_country_from_state_or_province(state_or_province: str) -> str:
+    """Infer country only from a recognized US state or Canadian province/territory."""
+    key = normalize_header(state_or_province)
+    if not key:
+        return ""
+    if key in CANADIAN_PROVINCES or any(normalize_header(v) == key for v in CANADIAN_PROVINCES.values()):
+        return "Canada"
+    if key in US_STATES or any(normalize_header(v) == key for v in US_STATES.values()):
+        return "United States"
+    return ""
+
+
+def parse_location_to_country_state(location: object) -> Tuple[str, str]:
+    """Parse obvious locations like 'Montreal, Quebec, Canada' or 'Dallas, Texas'.
+
+    This deliberately avoids guessing countries from city names. It only uses explicit
+    country tokens or recognized US states / Canadian provinces and territories.
+    """
+    text = clean_text(location)
+    if not text:
+        return "", ""
+    country = detect_country_from_text(text)
+    state = detect_state_from_text(text, country)
+    if not country and state:
+        country = infer_country_from_state_or_province(state)
+    return country, state
+
+
 def detect_state_from_text(text: str, country: str = "") -> str:
     if not text:
         return ""
@@ -558,14 +588,24 @@ def create_normalized_export(df_raw: pd.DataFrame, global_settings: Dict[str, st
     location_col = mapping.get("Location")
     if location_col and location_col in df.columns:
         locations = df[location_col].map(clean_text)
-        inferred_country = locations.map(detect_country_from_text)
-        output["Country"] = output["Country"].where(output["Country"].astype(str).str.strip().ne(""), inferred_country)
+        parsed_locations = locations.map(parse_location_to_country_state)
+        inferred_country = parsed_locations.map(lambda pair: pair[0])
+        inferred_state = parsed_locations.map(lambda pair: pair[1])
 
-        inferred_state = [detect_state_from_text(loc, country) for loc, country in zip(locations, output["Country"])]
+        # Location is only used as a fallback. Explicit Country / State source columns
+        # always win so valid user data is never overwritten silently.
+        output["Country"] = output["Country"].where(output["Country"].astype(str).str.strip().ne(""), inferred_country)
         output["State or Province"] = output["State or Province"].where(
             output["State or Province"].astype(str).str.strip().ne(""),
             pd.Series(inferred_state, index=output.index),
         )
+
+    # If a source State/Province exists without a Country, infer only for recognized
+    # Canadian provinces/territories and US states. Do not infer from city names.
+    output["Country"] = output["Country"].where(
+        output["Country"].astype(str).str.strip().ne(""),
+        output["State or Province"].map(infer_country_from_state_or_province),
+    )
 
     # Standard text cleanup for all populated values.
     for col in output.columns:
@@ -727,6 +767,7 @@ with right:
         """
         <div class="card">
         <b>Required:</b> Subject *, First Name *, Last Name *, Email *, Company Name *, Country *<br><br>
+        <b>Location parsing:</b> a source column such as Location, HQ Location, Office Location, or City can populate Country and State or Province when it contains obvious US/Canada state-province data.<br><br>
         <b>Optional:</b> State or Province, Market Segment, Main Application, and Industry Sector remain blank when not supplied by the source file or selected above.
         </div>
         """,
