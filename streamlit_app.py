@@ -1,7 +1,7 @@
 """
 Opal RT Spreadsheet Cleaner
-Production-ready Streamlit application for normalizing messy lead spreadsheets
-into Microsoft Dynamics-compatible CSV imports.
+Production-ready Streamlit application for converting messy lead spreadsheets
+into Microsoft Dynamics-compatible CSV import files.
 """
 
 from __future__ import annotations
@@ -13,14 +13,14 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Dict, Iterable, List, Optional, Tuple
 
-import openpyxl  # noqa: F401 - required by pandas Excel engine and deployment spec
+import openpyxl  # noqa: F401 - required for Excel support on Streamlit Cloud
 import pandas as pd
 import streamlit as st
 
 APP_TITLE = "Opal RT Spreadsheet Cleaner"
 APP_SUBTITLE = "Prepare CRM-ready lead imports for Microsoft Dynamics"
-HERO_IMAGE = "https://www.opal-rt.com/wp-content/uploads/2025/05/Hero-News-OPAL-RT.jpg"
-FOOTER_EMAIL = "arnaud.joakim@opal-rt.com"
+HERO_IMAGE_URL = "https://www.opal-rt.com/wp-content/uploads/2025/05/Hero-News-OPAL-RT.jpg"
+CONTACT_EMAIL = "arnaud.joakim@opal-rt.com"
 
 EXPORT_COLUMNS = [
     "(Do Not Modify) Lead",
@@ -47,7 +47,6 @@ EXPORT_COLUMNS = [
 ]
 
 REQUIRED_FIELDS = ["Subject", "First Name", "Last Name", "Email", "Company Name", "Country"]
-
 FIELD_LENGTHS = {
     "First Name": 58,
     "Last Name": 50,
@@ -60,11 +59,10 @@ FIELD_LENGTHS = {
     "Business Phone": 50,
 }
 
-LEAD_SOURCE_OPTIONS = ["", "Web", "Prospection", "Webinar", "Referral", "Social Media", "Customer Portal", "SPS", "Others"]
-RATING_OPTIONS = ["", "Cold", "Warm", "Hot"]
-ALLOW_MARKETING_OPTIONS = ["", "Yes", "No"]
-MARKET_SEGMENT_OPTIONS = ["", "Aerospace", "Automotive", "Energy Conversion", "Marine, Railway, Off-Highway", "Power System"]
-INDUSTRY_SECTOR_OPTIONS = [
+LEAD_SOURCE_VALUES = ["Web", "Prospection", "Webinar", "Referral", "Social Media", "Customer Portal", "SPS", "Others"]
+RATING_VALUES = ["Cold", "Warm", "Hot"]
+ALLOW_MARKETING_VALUES = ["Yes", "No"]
+INDUSTRY_SECTOR_VALUES = [
     "",
     "Academic - Research or Post-graduate",
     "Academic - Undergraduate",
@@ -76,7 +74,7 @@ INDUSTRY_SECTOR_OPTIONS = [
     "Research Lab - Industrial & Gov.",
     "Stock - Inventory",
 ]
-MAIN_APPLICATION_OPTIONS = {
+MARKET_SEGMENT_APPLICATIONS = {
     "": [""],
     "Aerospace": [
         "",
@@ -131,19 +129,20 @@ MAIN_APPLICATION_OPTIONS = {
         "Transmission",
     ],
 }
-ALL_MAIN_APPLICATIONS = sorted({v for values in MAIN_APPLICATION_OPTIONS.values() for v in values if v})
+MARKET_SEGMENT_VALUES = list(MARKET_SEGMENT_APPLICATIONS.keys())
+ALL_MAIN_APPLICATIONS = sorted({v for values in MARKET_SEGMENT_APPLICATIONS.values() for v in values if v})
 
 COLUMN_ALIASES = {
     "First Name": ["first name", "firstname", "fname", "given name", "givenname", "forename"],
     "Last Name": ["last name", "lastname", "surname", "lname", "family name", "familyname"],
-    "Job Title": ["job title", "title", "position", "role", "designation", "function"],
     "Company Name": ["company", "company name", "organization", "organisation", "org", "account", "business", "employer"],
+    "Job Title": ["job title", "title", "position", "role", "designation", "function"],
     "Email": ["email", "email address", "work email", "business email", "corporate email", "e-mail", "mail"],
     "Business Phone": ["phone", "telephone", "mobile", "mobile phone", "work phone", "business phone", "cell", "cell phone", "phone number"],
     "LinkedIn": ["linkedin", "linkedin profile", "linkedin profile url", "linkedin url", "linked in", "linkedin profile link"],
-    "Location": ["location", "hq location", "office location", "city", "address", "region"],
-    "Country": ["country", "country/region", "country region", "nation", "location"],
-    "State or Province": ["state", "province", "state/province", "state or province", "region", "location"],
+    "Location": ["location", "hq location", "office location", "city", "address", "region", "territory"],
+    "Country": ["country", "country/region", "country region", "nation"],
+    "State or Province": ["state", "province", "state/province", "state or province", "region", "territory"],
     "Market Segment": ["market segment", "segment", "market", "business segment"],
     "Main Application": ["main application", "application", "primary application", "use case"],
     "Industry Sector": ["industry sector", "industry", "sector", "vertical"],
@@ -153,12 +152,13 @@ COLUMN_ALIASES = {
     "Description": ["description", "notes", "note", "comments", "comment", "details"],
     "Allow Marketing Communication": ["allow marketing communication", "marketing consent", "opt in", "opt-in", "newsletter", "consent"],
 }
+LOCATION_HEADER_HINTS = ["location", "country", "country region", "state", "province", "state province", "state or province", "city", "hq location", "office location", "address", "region", "territory"]
 
 COUNTRY_ALIASES = {
     "usa": "United States",
     "us": "United States",
-    "u.s.": "United States",
-    "u.s.a.": "United States",
+    "u s": "United States",
+    "u s a": "United States",
     "united states of america": "United States",
     "united states": "United States",
     "america": "United States",
@@ -190,10 +190,10 @@ CANADIAN_PROVINCES = {
     "manitoba": "Manitoba", "mb": "Manitoba", "new brunswick": "New Brunswick", "nb": "New Brunswick",
     "newfoundland and labrador": "Newfoundland and Labrador", "nl": "Newfoundland and Labrador",
     "northwest territories": "Northwest Territories", "nt": "Northwest Territories", "nova scotia": "Nova Scotia", "ns": "Nova Scotia",
-    "nunavut": "Nunavut", "nu": "Nunavut", "ontario": "Ontario", "on": "Ontario", "prince edward island": "Prince Edward Island", "pe": "Prince Edward Island",
+    "nunavut": "Nunavut", "nu": "Nunavut", "ontario": "Ontario", "on": "Ontario", "prince edward island": "Prince Edward Island", "pei": "Prince Edward Island", "pe": "Prince Edward Island",
     "quebec": "Quebec", "québec": "Quebec", "qc": "Quebec", "saskatchewan": "Saskatchewan", "sk": "Saskatchewan", "yukon": "Yukon", "yt": "Yukon",
 }
-CITY_STATE_HINTS = {
+CITY_HINTS = {
     "montreal": ("Canada", "Quebec"), "montréal": ("Canada", "Quebec"), "quebec city": ("Canada", "Quebec"),
     "toronto": ("Canada", "Ontario"), "ottawa": ("Canada", "Ontario"), "vancouver": ("Canada", "British Columbia"),
     "calgary": ("Canada", "Alberta"), "edmonton": ("Canada", "Alberta"), "winnipeg": ("Canada", "Manitoba"),
@@ -204,118 +204,193 @@ CITY_STATE_HINTS = {
 }
 
 EMAIL_RE = re.compile(r"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$", re.IGNORECASE)
-
-
-def normalize_key(value: object) -> str:
-    text = "" if pd.isna(value) else str(value)
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    text = text.replace("&", " and ")
-    text = re.sub(r"[^A-Za-z0-9]+", " ", text).strip().lower()
-    return re.sub(r"\s+", " ", text)
+HIDDEN_CHARS_RE = re.compile(r"[\u0000-\u001F\u007F\u200B\u200C\u200D\uFEFF]")
+MULTISPACE_RE = re.compile(r"\s+")
 
 
 def clean_text(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
-    text = str(value).replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ")
-    text = "".join(ch for ch in text if ch.isprintable())
+    text = str(value)
     text = unicodedata.normalize("NFKC", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = HIDDEN_CHARS_RE.sub(" ", text).replace("\xa0", " ")
+    return MULTISPACE_RE.sub(" ", text).strip()
+
+
+def normalize_header(value: object) -> str:
+    text = clean_text(value)
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    text = text.replace("&", " and ").lower()
+    text = re.sub(r"[_\-\/]+", " ", text)
+    text = re.sub(r"[^a-z0-9 ]+", " ", text)
+    return MULTISPACE_RE.sub(" ", text).strip()
 
 
 def clean_email(value: object) -> str:
     return clean_text(value).lower()
 
 
-def clean_phone(value: object) -> str:
-    phone = clean_text(value)
-    return re.sub(r"\s+", " ", phone)
-
-
-def titleish(value: object) -> str:
-    # Normalize spaces and hidden characters without changing professional capitalization.
-    return clean_text(value)
-
-
-def is_empty_series(series: pd.Series) -> bool:
-    return series.fillna("").astype(str).map(clean_text).eq("").all()
-
-
 def remove_ghost_columns(df: pd.DataFrame) -> pd.DataFrame:
-    cleaned = df.copy()
-    cleaned.columns = [clean_text(c) for c in cleaned.columns]
     keep_cols = []
-    for col in cleaned.columns:
-        key = normalize_key(col)
-        if not key or key.startswith("unnamed"):
-            continue
-        if is_empty_series(cleaned[col]):
-            continue
-        keep_cols.append(col)
-    return cleaned.loc[:, keep_cols].copy()
+    for col in df.columns:
+        header = clean_text(col)
+        normalized_header = normalize_header(col)
+        values_empty = df[col].map(clean_text).eq("").all()
+        if header and not normalized_header.startswith("unnamed") and not values_empty:
+            keep_cols.append(col)
+    return df.loc[:, keep_cols].copy()
 
 
-def detect_columns(df: pd.DataFrame) -> Dict[str, str]:
-    detected: Dict[str, str] = {}
-    normalized_columns = {col: normalize_key(col) for col in df.columns}
-    used_cols = set()
+def score_alias(header_norm: str, alias_norm: str) -> int:
+    if not header_norm or not alias_norm:
+        return 0
+    if header_norm == alias_norm:
+        return 100
+    if header_norm.replace(" ", "") == alias_norm.replace(" ", ""):
+        return 96
+    if alias_norm in header_norm:
+        return 86
+    h_tokens = set(header_norm.split())
+    a_tokens = set(alias_norm.split())
+    if a_tokens and a_tokens.issubset(h_tokens):
+        return 80
+    overlap = len(h_tokens & a_tokens)
+    if overlap:
+        return min(64, 24 * overlap)
+    return int(SequenceMatcher(None, header_norm, alias_norm).ratio() * 54)
 
-    for target, aliases in COLUMN_ALIASES.items():
+
+def detect_source_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
+    normalized_columns = {col: normalize_header(col) for col in df.columns}
+    used: set[str] = set()
+    mapping: Dict[str, Optional[str]] = {}
+    priority = [
+        "Email", "First Name", "Last Name", "Company Name", "Job Title", "Business Phone", "LinkedIn",
+        "Country", "State or Province", "Location", "Market Segment", "Main Application", "Industry Sector",
+        "Source Campaign", "Lead Source", "Rating", "Description", "Allow Marketing Communication",
+    ]
+    for target in priority:
         best_col = None
-        best_score = 0.0
-        alias_keys = [normalize_key(a) for a in aliases]
-        for col, col_key in normalized_columns.items():
-            if col in used_cols and target not in {"Country", "State or Province"}:
+        best_score = 0
+        for col, col_norm in normalized_columns.items():
+            if col in used:
                 continue
-            scores = []
-            for alias in alias_keys:
-                if col_key == alias:
-                    scores.append(1.0)
-                elif alias and (alias in col_key or col_key in alias):
-                    scores.append(0.91)
-                else:
-                    scores.append(SequenceMatcher(None, col_key, alias).ratio())
-            score = max(scores) if scores else 0
-            if score > best_score:
-                best_score = score
-                best_col = col
-        if best_col and best_score >= 0.78:
-            detected[target] = best_col
-            if target not in {"Country", "State or Province"}:
-                used_cols.add(best_col)
-    return detected
+            for alias in COLUMN_ALIASES[target]:
+                score = score_alias(col_norm, normalize_header(alias))
+                if score > best_score:
+                    best_col = col
+                    best_score = score
+        mapping[target] = best_col if best_score >= 60 else None
+        if mapping[target]:
+            used.add(mapping[target])
+    return mapping
 
 
-def canonical_from_options(value: object, options: Iterable[str]) -> str:
+def likely_location_columns(df: pd.DataFrame, mapping: Dict[str, Optional[str]]) -> List[str]:
+    candidates: List[str] = []
+    for target in ["Location", "Country", "State or Province"]:
+        col = mapping.get(target)
+        if col and col not in candidates:
+            candidates.append(col)
+    for col in df.columns:
+        norm = normalize_header(col)
+        if any(score_alias(norm, hint) >= 70 for hint in LOCATION_HEADER_HINTS) and col not in candidates:
+            candidates.append(col)
+    return candidates
+
+
+def read_uploaded_file(uploaded_file) -> pd.DataFrame:
+    suffix = uploaded_file.name.lower().rsplit(".", 1)[-1]
+    data = uploaded_file.getvalue()
+    if suffix == "csv":
+        last_error = None
+        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+            try:
+                return pd.read_csv(io.BytesIO(data), dtype=str, encoding=encoding)
+            except UnicodeDecodeError as exc:
+                last_error = exc
+        raise last_error or ValueError("Unable to decode CSV file.")
+    if suffix == "xlsx":
+        return pd.read_excel(io.BytesIO(data), dtype=str, engine="openpyxl")
+    raise ValueError("Unsupported file type. Please upload a .csv or .xlsx file.")
+
+
+def value_from_mapping(df: pd.DataFrame, mapping: Dict[str, Optional[str]], target: str) -> pd.Series:
+    col = mapping.get(target)
+    if col and col in df.columns:
+        return df[col].map(clean_email if target == "Email" else clean_text)
+    return pd.Series([""] * len(df), index=df.index, dtype="object")
+
+
+def canonical_choice(value: object, choices: Iterable[str]) -> str:
     text = clean_text(value)
     if not text:
         return ""
-    key = normalize_key(text)
-    lookup = {normalize_key(opt): opt for opt in options if opt}
-    if key in lookup:
-        return lookup[key]
-    best = ""
+    choice_list = list(choices)
+    norm_to_choice = {normalize_header(choice): choice for choice in choice_list}
+    norm = normalize_header(text)
+    if norm in norm_to_choice:
+        return norm_to_choice[norm]
+    best_choice = ""
     best_score = 0.0
-    for opt_key, opt in lookup.items():
-        score = SequenceMatcher(None, key, opt_key).ratio()
-        if key in opt_key or opt_key in key:
-            score = max(score, 0.92)
-        if score > best_score:
-            best = opt
-            best_score = score
-    return best if best_score >= 0.88 else text
-
-
-def infer_market_from_main_application(main_application: str) -> str:
-    main_key = normalize_key(main_application)
-    if not main_key:
-        return ""
-    for segment, values in MAIN_APPLICATION_OPTIONS.items():
-        if not segment:
+    for choice in choice_list:
+        if not choice:
             continue
-        for app in values:
-            if normalize_key(app) == main_key:
-                return segment
+        score = SequenceMatcher(None, norm, normalize_header(choice)).ratio()
+        if score > best_score:
+            best_choice = choice
+            best_score = score
+    return best_choice if best_score >= 0.86 else ""
+
+
+def detect_country_from_text(value: object) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    pieces = [normalize_header(p) for p in re.split(r"[,|;/()\[\]\n]", text) if clean_text(p)]
+    joined = normalize_header(text)
+    for piece in reversed(pieces):
+        if piece in COUNTRY_ALIASES:
+            return COUNTRY_ALIASES[piece]
+    for alias, country in sorted(COUNTRY_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
+        if re.search(rf"\b{re.escape(alias)}\b", joined):
+            return country
+    return ""
+
+
+def detect_state_from_text(value: object, country: str = "") -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    parts = [normalize_header(p) for p in re.split(r"[,|;/()\[\]\n]", text) if clean_text(p)]
+    joined = normalize_header(text)
+    country_norm = normalize_header(country)
+    maps = []
+    if country_norm in {"canada", "ca"}:
+        maps = [CANADIAN_PROVINCES]
+    elif country_norm in {"united states", "united states of america", "usa", "us"}:
+        maps = [US_STATES]
+    else:
+        maps = [CANADIAN_PROVINCES, US_STATES]
+    for mapping in maps:
+        for part in parts:
+            if part in mapping:
+                return mapping[part]
+    for mapping in maps:
+        for key, label in sorted(mapping.items(), key=lambda item: len(item[0]), reverse=True):
+            if len(key) > 2 and re.search(rf"\b{re.escape(key)}\b", joined):
+                return label
+    return ""
+
+
+def infer_country_from_state_or_province(value: object) -> str:
+    key = normalize_header(value)
+    if not key:
+        return ""
+    if key in CANADIAN_PROVINCES or any(normalize_header(v) == key for v in CANADIAN_PROVINCES.values()):
+        return "Canada"
+    if key in US_STATES or any(normalize_header(v) == key for v in US_STATES.values()):
+        return "United States"
     return ""
 
 
@@ -323,384 +398,331 @@ def parse_location(value: object) -> Tuple[str, str]:
     text = clean_text(value)
     if not text:
         return "", ""
-
-    pieces = [clean_text(p) for p in re.split(r"[,;/|]+", text) if clean_text(p)]
-    lowered = [p.lower() for p in pieces]
-    all_tokens = [normalize_key(p) for p in pieces]
-    full_key = normalize_key(text)
-
-    country = ""
-    state = ""
-
-    # Explicit country tokens first.
-    for token in all_tokens + [full_key]:
-        if token in COUNTRY_ALIASES:
-            country = COUNTRY_ALIASES[token]
-            break
-
-    # Explicit state/province tokens.
-    for token in all_tokens:
-        if token in CANADIAN_PROVINCES:
-            state = CANADIAN_PROVINCES[token]
-            country = country or "Canada"
-            break
-        if token in US_STATES:
-            state = US_STATES[token]
-            country = country or "United States"
-            break
-
-    # Text can be "Dallas Texas United States" without commas.
-    if not state:
-        for province_key, province in CANADIAN_PROVINCES.items():
-            if re.search(rf"\b{re.escape(province_key)}\b", full_key):
-                state = province
-                country = country or "Canada"
+    country = detect_country_from_text(text)
+    state = detect_state_from_text(text, country)
+    if not country and state:
+        country = infer_country_from_state_or_province(state)
+    if not country and not state:
+        normalized = normalize_header(text)
+        for city, result in CITY_HINTS.items():
+            if re.search(rf"\b{re.escape(normalize_header(city))}\b", normalized):
+                country, state = result
                 break
-    if not state:
-        for state_key, state_name in US_STATES.items():
-            if len(state_key) > 2 and re.search(rf"\b{re.escape(state_key)}\b", full_key):
-                state = state_name
-                country = country or "United States"
-                break
-
-    # Known city hints for obvious locations.
-    if not country or not state:
-        for city_key, (hint_country, hint_state) in CITY_STATE_HINTS.items():
-            if city_key in full_key:
-                country = country or hint_country
-                state = state or hint_state
-                break
-
-    # If the last token is country and previous token is a known state/province.
-    if len(all_tokens) >= 2:
-        prev = all_tokens[-2]
-        if not state and prev in CANADIAN_PROVINCES:
-            state = CANADIAN_PROVINCES[prev]
-            country = country or "Canada"
-        if not state and prev in US_STATES:
-            state = US_STATES[prev]
-            country = country or "United States"
-
     return country, state
 
 
-def read_uploaded_file(uploaded_file) -> pd.DataFrame:
-    filename = uploaded_file.name.lower()
-    if filename.endswith(".csv"):
-        raw = uploaded_file.getvalue()
-        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
-            try:
-                return pd.read_csv(io.BytesIO(raw), dtype=str, encoding=encoding)
-            except UnicodeDecodeError:
-                continue
-        return pd.read_csv(io.BytesIO(raw), dtype=str)
-    return pd.read_excel(uploaded_file, dtype=str, engine="openpyxl")
+def fill_location_fields(output: pd.DataFrame, df: pd.DataFrame, mapping: Dict[str, Optional[str]]) -> pd.DataFrame:
+    country_col = mapping.get("Country")
+    state_col = mapping.get("State or Province")
+    if country_col and country_col in df.columns:
+        output["Country"] = df[country_col].map(clean_text)
+    if state_col and state_col in df.columns:
+        output["State or Province"] = df[state_col].map(clean_text)
+
+    for col in likely_location_columns(df, mapping):
+        parsed = df[col].map(parse_location)
+        countries = parsed.map(lambda pair: pair[0])
+        states = parsed.map(lambda pair: pair[1])
+        output["Country"] = output["Country"].where(output["Country"].astype(str).str.strip().ne(""), countries)
+        output["State or Province"] = output["State or Province"].where(output["State or Province"].astype(str).str.strip().ne(""), states)
+
+    # If a state/province column exists without a country column, infer only when the state/province is recognized.
+    inferred_from_state = output["State or Province"].map(infer_country_from_state_or_province)
+    output["Country"] = output["Country"].where(output["Country"].astype(str).str.strip().ne(""), inferred_from_state)
+    return output
 
 
-def default_subject() -> str:
-    return f"{datetime.now():%Y%m}Prospection"
+def canonical_market_segment(value: object) -> str:
+    return canonical_choice(value, MARKET_SEGMENT_VALUES)
 
 
-def build_normalized_export(df: pd.DataFrame, detected: Dict[str, str], settings: Dict[str, str]) -> Tuple[pd.DataFrame, Dict[str, Optional[str]]]:
-    output = pd.DataFrame(columns=EXPORT_COLUMNS)
-    output["(Do Not Modify) Lead"] = [""] * len(df)
-    output["(Do Not Modify) Row Checksum"] = [""] * len(df)
-    output["(Do Not Modify) Modified On"] = [""] * len(df)
+def canonical_main_application(value: object, market_segment: object) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    segment = canonical_market_segment(market_segment)
+    allowed = MARKET_SEGMENT_APPLICATIONS.get(segment, [""])
+    if segment:
+        return canonical_choice(text, allowed)
+    # If no segment is supplied, allow a match against any known application without inventing a segment.
+    return canonical_choice(text, ALL_MAIN_APPLICATIONS)
 
-    for col in EXPORT_COLUMNS[3:]:
-        output[col] = ""
 
-    mappings: Dict[str, Optional[str]] = {field: detected.get(field) for field in EXPORT_COLUMNS if field in detected}
+def create_normalized_export(df_raw: pd.DataFrame, global_settings: Dict[str, str]) -> Tuple[pd.DataFrame, Dict[str, Optional[str]], int, List[str]]:
+    df = remove_ghost_columns(df_raw).copy()
+    df.columns = [clean_text(c) for c in df.columns]
+    mapping = detect_source_columns(df)
+    output = pd.DataFrame("", index=df.index, columns=EXPORT_COLUMNS, dtype="object")
 
-    direct_fields = [
-        "First Name", "Last Name", "Job Title", "Company Name", "Email", "Business Phone",
-        "Country", "State or Province", "LinkedIn", "Lead Source", "Rating", "Source Campaign",
-        "Description", "Market Segment", "Main Application", "Industry Sector", "Allow Marketing Communication",
-    ]
-    for field in direct_fields:
-        source_col = detected.get(field)
-        if source_col and source_col in df.columns:
-            if field == "Email":
-                output[field] = df[source_col].map(clean_email)
-            elif field == "Business Phone":
-                output[field] = df[source_col].map(clean_phone)
-            else:
-                output[field] = df[source_col].map(titleish)
+    for field in [
+        "First Name", "Last Name", "Job Title", "Company Name", "Email", "Business Phone", "Description", "LinkedIn",
+        "Market Segment", "Main Application", "Industry Sector", "Source Campaign", "Lead Source", "Rating", "Allow Marketing Communication",
+    ]:
+        output[field] = value_from_mapping(df, mapping, field)
 
-    # Location parsing should fill Country/State only where those fields are blank.
-    loc_col = detected.get("Location")
-    if loc_col and loc_col in df.columns:
-        for idx, value in df[loc_col].items():
-            parsed_country, parsed_state = parse_location(value)
-            if parsed_country and not clean_text(output.at[idx, "Country"]):
-                output.at[idx, "Country"] = parsed_country
-            if parsed_state and not clean_text(output.at[idx, "State or Province"]):
-                output.at[idx, "State or Province"] = parsed_state
-        mappings["Location"] = loc_col
+    output = fill_location_fields(output, df, mapping)
 
-    # Canonicalize CRM option fields found in the source file.
-    output["Lead Source"] = output["Lead Source"].map(lambda v: canonical_from_options(v, LEAD_SOURCE_OPTIONS))
-    output["Rating"] = output["Rating"].map(lambda v: canonical_from_options(v, RATING_OPTIONS))
-    output["Allow Marketing Communication"] = output["Allow Marketing Communication"].map(lambda v: canonical_from_options(v, ALLOW_MARKETING_OPTIONS))
-    output["Market Segment"] = output["Market Segment"].map(lambda v: canonical_from_options(v, MARKET_SEGMENT_OPTIONS))
-    output["Main Application"] = output["Main Application"].map(lambda v: canonical_from_options(v, ALL_MAIN_APPLICATIONS))
-    output["Industry Sector"] = output["Industry Sector"].map(lambda v: canonical_from_options(v, INDUSTRY_SECTOR_OPTIONS))
-
-    # Infer segment from a valid source main application only when source segment is empty.
-    for idx in output.index:
-        if not clean_text(output.at[idx, "Market Segment"]):
-            inferred = infer_market_from_main_application(output.at[idx, "Main Application"])
-            if inferred:
-                output.at[idx, "Market Segment"] = inferred
-
-    # Global settings. Blank classification dropdowns intentionally do not fill values.
-    always_apply = ["Subject", "Lead Source", "Rating", "Allow Marketing Communication", "Source Campaign", "Description"]
-    for field in always_apply:
-        value = clean_text(settings.get(field, ""))
-        if value:
-            output[field] = value
-
-    for field in ["Market Segment", "Main Application", "Industry Sector"]:
-        value = clean_text(settings.get(field, ""))
-        if value:
-            output[field] = value
-
-    # Subject is mandatory and has a default; populate it even when not provided by source.
-    if not clean_text(settings.get("Subject", "")):
-        output["Subject"] = default_subject()
-
-    # Final cleanup, preserving exact column order.
     for col in output.columns:
-        if col == "Email":
-            output[col] = output[col].map(clean_email)
-        elif col == "Business Phone":
-            output[col] = output[col].map(clean_phone)
-        else:
-            output[col] = output[col].map(clean_text)
+        output[col] = output[col].map(clean_email if col == "Email" else clean_text)
 
-    if "Email" in output.columns:
-        before = len(output)
-        output = output.drop_duplicates(subset=["Email"], keep="first", ignore_index=True)
-        output.attrs["duplicates_removed"] = before - len(output)
+    # Canonicalize source-provided optional dropdowns. Blank or unmatched values remain blank.
+    output["Market Segment"] = output["Market Segment"].map(canonical_market_segment)
+    output["Industry Sector"] = output["Industry Sector"].map(lambda v: canonical_choice(v, INDUSTRY_SECTOR_VALUES))
 
-    return output[EXPORT_COLUMNS], mappings
+    # Mandatory/global settings. These may be intentionally applied to every row.
+    output["Subject"] = clean_text(global_settings.get("Subject", ""))
+    output["Lead Source"] = clean_text(global_settings.get("Lead Source", "")) or output["Lead Source"]
+    output["Rating"] = clean_text(global_settings.get("Rating", "")) or output["Rating"]
+    output["Allow Marketing Communication"] = clean_text(global_settings.get("Allow Marketing Communication", "")) or output["Allow Marketing Communication"]
+
+    # Optional settings must not overwrite source values unless the user explicitly entered/selected a non-blank value.
+    for field in ["Source Campaign", "Description"]:
+        selected = clean_text(global_settings.get(field, ""))
+        if selected:
+            output[field] = selected
+
+    selected_market_segment = clean_text(global_settings.get("Market Segment", ""))
+    selected_industry_sector = clean_text(global_settings.get("Industry Sector", ""))
+    selected_main_application = clean_text(global_settings.get("Main Application", ""))
+    if selected_market_segment:
+        output["Market Segment"] = canonical_market_segment(selected_market_segment)
+    if selected_industry_sector:
+        output["Industry Sector"] = canonical_choice(selected_industry_sector, INDUSTRY_SECTOR_VALUES)
+    if selected_main_application:
+        output["Main Application"] = selected_main_application
+    else:
+        output["Main Application"] = [
+            canonical_main_application(app, seg) for app, seg in zip(output["Main Application"], output["Market Segment"])
+        ]
+
+    before = len(output)
+    has_email = output["Email"].astype(str).str.strip().ne("")
+    duplicate_mask = has_email & output.duplicated(subset=["Email"], keep="first")
+    output = output.loc[~duplicate_mask].reset_index(drop=True)
+    duplicates_removed = before - len(output)
+
+    location_cols = likely_location_columns(df, mapping)
+    return output[EXPORT_COLUMNS], mapping, duplicates_removed, location_cols
 
 
 def validate_export(df: pd.DataFrame) -> List[str]:
     errors: List[str] = []
-    for row_idx, row in df.iterrows():
-        display_row = row_idx + 2  # Spreadsheet-like row number after header.
+    for idx, row in df.iterrows():
+        row_number = idx + 2
         for field in REQUIRED_FIELDS:
-            if not clean_text(row.get(field, "")):
-                errors.append(f"Row {display_row}: Missing required field → {field}")
+            if clean_text(row.get(field, "")) == "":
+                errors.append(f"Row {row_number}: Missing required field → {field}")
 
-        email = clean_text(row.get("Email", ""))
+        email = clean_email(row.get("Email", ""))
         if email and not EMAIL_RE.match(email):
-            errors.append(f"Row {display_row}: Invalid email → {email}")
+            errors.append(f"Row {row_number}: Invalid email → {email}")
 
-        for field, limit in FIELD_LENGTHS.items():
+        for field, max_len in FIELD_LENGTHS.items():
             value = clean_text(row.get(field, ""))
-            if value and len(value) > limit:
-                errors.append(f"Row {display_row}: {field} exceeds {limit} characters")
+            if len(value) > max_len:
+                errors.append(f"Row {row_number}: {field} exceeds {max_len} characters")
 
-        segment = clean_text(row.get("Market Segment", ""))
-        main_app = clean_text(row.get("Main Application", ""))
+        market_segment = clean_text(row.get("Market Segment", ""))
+        main_application = clean_text(row.get("Main Application", ""))
+        if market_segment and market_segment not in MARKET_SEGMENT_APPLICATIONS:
+            errors.append(f"Row {row_number}: Invalid Market Segment → {market_segment}")
+        if main_application:
+            valid_apps = MARKET_SEGMENT_APPLICATIONS.get(market_segment, [""])
+            if market_segment and main_application not in valid_apps:
+                errors.append(f"Row {row_number}: Main Application '{main_application}' is not valid for Market Segment '{market_segment}'")
+            if not market_segment and main_application not in ALL_MAIN_APPLICATIONS:
+                errors.append(f"Row {row_number}: Invalid Main Application → {main_application}")
+
         industry = clean_text(row.get("Industry Sector", ""))
-        if segment and segment not in MARKET_SEGMENT_OPTIONS:
-            errors.append(f"Row {display_row}: Invalid Market Segment → {segment}")
-        if industry and industry not in INDUSTRY_SECTOR_OPTIONS:
-            errors.append(f"Row {display_row}: Invalid Industry Sector → {industry}")
-        if main_app:
-            valid_apps = MAIN_APPLICATION_OPTIONS.get(segment, [""])
-            if segment and main_app not in valid_apps:
-                errors.append(f"Row {display_row}: Main Application does not match Market Segment → {main_app}")
-            elif not segment and main_app not in ALL_MAIN_APPLICATIONS:
-                errors.append(f"Row {display_row}: Invalid Main Application → {main_app}")
+        if industry and industry not in INDUSTRY_SECTOR_VALUES:
+            errors.append(f"Row {row_number}: Invalid Industry Sector → {industry}")
 
+        lead_source = clean_text(row.get("Lead Source", ""))
+        if lead_source and lead_source not in LEAD_SOURCE_VALUES:
+            errors.append(f"Row {row_number}: Invalid Lead Source → {lead_source}")
+
+        rating = clean_text(row.get("Rating", ""))
+        if rating and rating not in RATING_VALUES:
+            errors.append(f"Row {row_number}: Invalid Rating → {rating}")
+
+        allow = clean_text(row.get("Allow Marketing Communication", ""))
+        if allow and allow not in ALLOW_MARKETING_VALUES:
+            errors.append(f"Row {row_number}: Invalid Allow Marketing Communication → {allow}")
     return errors
 
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    return df.to_csv(index=False, encoding="utf-8").encode("utf-8")
 
 
-def inject_css() -> None:
+def render_metric(label: str, value: object) -> None:
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+st.set_page_config(page_title=APP_TITLE, page_icon="🔷", layout="wide")
+st.markdown(
+    f"""
+    <style>
+    :root {{
+        --opal-blue: #005BAA;
+        --opal-navy: #092A49;
+        --opal-sky: #00A3E0;
+        --opal-light: #F4F8FC;
+        --opal-border: #D8E7F5;
+        --opal-text: #172033;
+    }}
+    .stApp {{ background: linear-gradient(180deg, #F7FBFF 0%, #FFFFFF 42%, #F6F9FC 100%); color: var(--opal-text); }}
+    .hero {{
+        min-height: 285px;
+        border-radius: 28px;
+        overflow: hidden;
+        margin: 0.25rem 0 1.6rem 0;
+        background-image: linear-gradient(90deg, rgba(4, 31, 57, .92), rgba(0, 91, 170, .72), rgba(0, 163, 224, .22)), url('{HERO_IMAGE_URL}');
+        background-size: cover;
+        background-position: center;
+        box-shadow: 0 20px 55px rgba(9, 42, 73, 0.16);
+    }}
+    .hero-content {{ padding: 3.1rem 3.4rem; max-width: 900px; }}
+    .eyebrow {{
+        display: inline-flex; align-items: center; gap: .5rem; padding: .35rem .75rem; border-radius: 999px;
+        background: rgba(255,255,255,.16); color: #EAF7FF; border: 1px solid rgba(255,255,255,.25);
+        font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    }}
+    .hero h1 {{ margin: 1rem 0 .35rem 0; font-size: 3.25rem; line-height: 1.02; color: white; font-weight: 800; }}
+    .hero p {{ color: #E8F5FF; font-size: 1.22rem; margin: 0; max-width: 760px; }}
+    .card {{ background: rgba(255,255,255,.92); border: 1px solid var(--opal-border); border-radius: 22px; padding: 1.1rem 1.2rem; box-shadow: 0 10px 28px rgba(9, 42, 73, 0.07); }}
+    .metric-card {{ background: #FFFFFF; border: 1px solid var(--opal-border); border-radius: 18px; padding: 1rem 1.1rem; min-height: 95px; box-shadow: 0 8px 24px rgba(9, 42, 73, 0.06); }}
+    .metric-label {{ color: #55708A; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }}
+    .metric-value {{ color: var(--opal-navy); font-size: 1.9rem; font-weight: 850; margin-top: .1rem; }}
+    .footer {{ margin-top: 3rem; padding: 1.25rem 0 1.5rem 0; border-top: 1px solid #DDEBF6; text-align: center; color: #5B7084; font-size: .94rem; }}
+    .footer a {{ color: var(--opal-blue); text-decoration: none; font-weight: 800; }}
+    div.stButton > button, div.stDownloadButton > button {{ background: linear-gradient(90deg, #005BAA 0%, #008DD2 100%) !important; color: white !important; border: 0 !important; border-radius: 999px !important; padding: .72rem 1.25rem !important; font-weight: 800 !important; box-shadow: 0 8px 18px rgba(0, 91, 170, .22) !important; }}
+    [data-testid="stFileUploader"] {{ border: 1px dashed #8ABDE7; border-radius: 20px; background: #F7FBFF; padding: 1rem; }}
+    .mandatory-note {{ color: #57708A; font-size: .9rem; margin-bottom: 0.7rem; }}
+    .stAlert {{ border-radius: 16px; }}
+    </style>
+    <div class="hero"><div class="hero-content"><div class="eyebrow">OPAL-RT · Dynamics CRM Import Utility</div><h1>{APP_TITLE}</h1><p>{APP_SUBTITLE}</p></div></div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown("### Global Import Settings")
+st.markdown('<div class="mandatory-note">Fields marked with * are mandatory for Dynamics import.</div>', unsafe_allow_html=True)
+
+row1 = st.columns([1.4, 1, 1, 1])
+with row1[0]:
+    subject = st.text_input("Subject *", value=f"{datetime.now():%Y%m}Prospection", max_chars=300)
+with row1[1]:
+    lead_source = st.selectbox("Lead Source", LEAD_SOURCE_VALUES, index=LEAD_SOURCE_VALUES.index("Prospection"))
+with row1[2]:
+    rating = st.selectbox("Rating", RATING_VALUES, index=0)
+with row1[3]:
+    allow_marketing = st.selectbox("Allow Marketing Communication", ALLOW_MARKETING_VALUES, index=0)
+
+row2 = st.columns([1, 1, 1, 1])
+with row2[0]:
+    market_segment = st.selectbox("Market Segment", MARKET_SEGMENT_VALUES, index=0)
+with row2[1]:
+    main_application = st.selectbox("Main Application", MARKET_SEGMENT_APPLICATIONS[market_segment], index=0)
+with row2[2]:
+    industry_sector = st.selectbox("Industry Sector", INDUSTRY_SECTOR_VALUES, index=0)
+with row2[3]:
+    source_campaign = st.text_input("Source Campaign", value="")
+description = st.text_area("Description", value="", max_chars=2000, height=86)
+
+st.divider()
+left, right = st.columns([1, 1], gap="large")
+with left:
+    st.markdown("### Upload CSV or Excel File")
+    uploaded_file = st.file_uploader("Accepted formats: .csv, .xlsx", type=["csv", "xlsx"])
+with right:
+    st.markdown("### Mandatory CRM Fields")
     st.markdown(
         """
-        <style>
-        :root { --opal-blue: #0057A8; --opal-navy: #071D49; --opal-sky: #EAF4FF; --opal-gray: #F6F8FB; }
-        .stApp { background: linear-gradient(180deg, #f8fbff 0%, #ffffff 42%, #f7f9fc 100%); }
-        [data-testid="stHeader"] { background: rgba(248, 251, 255, 0.82); backdrop-filter: blur(8px); }
-        .block-container { max-width: 1220px; padding-top: 1.2rem; padding-bottom: 3rem; }
-        .hero {
-            position: relative; overflow: hidden; border-radius: 28px; min-height: 310px; padding: 44px;
-            background-image: linear-gradient(90deg, rgba(7,29,73,.94), rgba(0,87,168,.72), rgba(0,87,168,.18)), url('https://www.opal-rt.com/wp-content/uploads/2025/05/Hero-News-OPAL-RT.jpg');
-            background-size: cover; background-position: center; box-shadow: 0 24px 70px rgba(7,29,73,.22); color: white;
-        }
-        .hero h1 { font-size: clamp(2.2rem, 5vw, 4.2rem); line-height: 1.02; margin: 0 0 12px 0; font-weight: 800; letter-spacing: -.04em; }
-        .hero p { font-size: 1.25rem; max-width: 680px; opacity: .94; margin: 0; }
-        .hero-badge { display: inline-flex; gap: 8px; align-items: center; padding: 8px 13px; border-radius: 999px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.24); margin-bottom: 22px; font-weight: 650; }
-        .metric-card, .soft-card { border: 1px solid #e6ecf5; background: rgba(255,255,255,.92); border-radius: 22px; padding: 20px; box-shadow: 0 12px 32px rgba(7,29,73,.07); }
-        .metric-card strong { color: var(--opal-blue); font-size: 1.85rem; display:block; }
-        .section-title { font-size: 1.28rem; font-weight: 760; color: var(--opal-navy); margin: 14px 0 6px; }
-        .required-star { color: #D92D20; font-weight: 800; }
-        .footer { text-align:center; padding: 26px 0 12px; color: #5b667a; }
-        .footer a { color: var(--opal-blue); font-weight: 700; text-decoration: none; }
-        div.stButton > button, div.stDownloadButton > button { border-radius: 14px !important; border: 1px solid #0057A8 !important; background: #0057A8 !important; color: white !important; font-weight: 720 !important; min-height: 44px; box-shadow: 0 10px 22px rgba(0,87,168,.22); }
-        div.stButton > button:hover, div.stDownloadButton > button:hover { background: #004987 !important; border-color: #004987 !important; }
-        [data-testid="stFileUploader"] section { border-radius: 20px; border: 1.5px dashed #8dbbe8; background: #f6fbff; }
-        div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, textarea { border-radius: 12px !important; }
-        .stAlert { border-radius: 16px; }
-        hr { border: none; border-top: 1px solid #e6ecf5; margin: 1.4rem 0; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_hero() -> None:
-    st.markdown(
-        f"""
-        <div class="hero">
-            <div class="hero-badge">OPAL-RT • Dynamics Import Utility</div>
-            <h1>{APP_TITLE}</h1>
-            <p>{APP_SUBTITLE}</p>
+        <div class="card">
+        <b>Required:</b> Subject *, First Name *, Last Name *, Email *, Company Name *, Country *<br><br>
+        <b>Location logic:</b> Any source column that looks like Location, Country, State, Province, City, Address, Region, or Territory is scanned for obvious country/state/province data.<br><br>
+        <b>Optional CRM classifications:</b> Market Segment, Main Application, and Industry Sector remain blank unless supplied by the source file or selected above.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-
-def render_global_settings() -> Dict[str, str]:
-    st.markdown('<div class="section-title">Global Import Settings</div>', unsafe_allow_html=True)
-    st.caption("Values selected here are applied to every exported row. Classification fields can remain blank.")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        subject = st.text_input("Subject *", value=default_subject(), help="Required. Default format: YYYYMMProspection.")
-        lead_source = st.selectbox("Lead Source", LEAD_SOURCE_OPTIONS, index=LEAD_SOURCE_OPTIONS.index("Prospection"))
-        market_segment = st.selectbox("Market Segment", MARKET_SEGMENT_OPTIONS, index=0)
-    with col2:
-        rating = st.selectbox("Rating", RATING_OPTIONS, index=0)
-        allow_marketing = st.selectbox("Allow Marketing Communication", ALLOW_MARKETING_OPTIONS, index=0)
-        main_options = MAIN_APPLICATION_OPTIONS.get(market_segment, [""])
-        main_application = st.selectbox("Main Application", main_options, index=0)
-    with col3:
-        industry_sector = st.selectbox("Industry Sector", INDUSTRY_SECTOR_OPTIONS, index=0)
-        source_campaign = st.text_input("Source Campaign", value="")
-        description = st.text_area("Description", value="", height=92, max_chars=2000)
-
-    return {
-        "Subject": subject,
-        "Lead Source": lead_source,
-        "Rating": rating,
-        "Allow Marketing Communication": allow_marketing,
-        "Market Segment": market_segment,
-        "Main Application": main_application,
-        "Industry Sector": industry_sector,
-        "Source Campaign": source_campaign,
-        "Description": description,
-    }
-
-
-def render_mapping_summary(mappings: Dict[str, Optional[str]], detected: Dict[str, str]) -> None:
-    rows = []
-    for target in ["First Name", "Last Name", "Company Name", "Job Title", "Email", "Business Phone", "LinkedIn", "Location", "Country", "State or Province", "Market Segment", "Main Application", "Industry Sector"]:
-        rows.append({"Dynamics Field": target, "Detected Source Column": mappings.get(target) or detected.get(target) or "—"})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-
-def main() -> None:
-    st.set_page_config(page_title=APP_TITLE, page_icon="🧹", layout="wide")
-    inject_css()
-    render_hero()
-
-    st.write("")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown('<div class="metric-card"><strong>CSV/XLSX</strong>Accepted upload formats</div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown('<div class="metric-card"><strong>21</strong>Exact Dynamics export columns</div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown('<div class="metric-card"><strong>Pre-check</strong>CRM validation before import</div>', unsafe_allow_html=True)
-
-    st.write("")
-    settings = render_global_settings()
-
-    st.markdown("---")
-    st.markdown('<div class="section-title">Upload CSV or Excel File</div>', unsafe_allow_html=True)
-    uploaded = st.file_uploader("Upload CSV or Excel File", type=["csv", "xlsx"], label_visibility="collapsed")
-
-    if not uploaded:
-        st.info("Upload a lead spreadsheet to automatically clean, map, validate, and export it for Microsoft Dynamics.")
-        st.markdown(
-            """
-            **Mandatory fields:** Subject*, First Name*, Last Name*, Email*, Company Name*, Country*  
-            **Important:** if your source has a `Location` column, the app will use it to infer Country and State/Province when obvious.
-            """
+if uploaded_file:
+    try:
+        raw_df = read_uploaded_file(uploaded_file)
+        normalized_df, detected_mapping, duplicates_removed, location_cols = create_normalized_export(
+            raw_df,
+            {
+                "Subject": subject,
+                "Lead Source": lead_source,
+                "Rating": rating,
+                "Allow Marketing Communication": allow_marketing,
+                "Market Segment": market_segment,
+                "Main Application": main_application,
+                "Industry Sector": industry_sector,
+                "Source Campaign": source_campaign,
+                "Description": description,
+            },
         )
-    else:
-        try:
-            source_df = read_uploaded_file(uploaded)
-            source_df = remove_ghost_columns(source_df)
-            for col in source_df.columns:
-                source_df[col] = source_df[col].map(clean_text)
-        except Exception as exc:  # pragma: no cover - displayed in UI
-            st.error(f"Could not read the uploaded file: {exc}")
-            return
+        validation_errors = validate_export(normalized_df)
 
-        if source_df.empty or len(source_df.columns) == 0:
-            st.error("The uploaded file does not contain usable data after removing empty/unnamed columns.")
-            return
+        metric_cols = st.columns(4)
+        with metric_cols[0]:
+            render_metric("Source Rows", len(raw_df))
+        with metric_cols[1]:
+            render_metric("Export Rows", len(normalized_df))
+        with metric_cols[2]:
+            render_metric("Duplicates Removed", duplicates_removed)
+        with metric_cols[3]:
+            render_metric("Validation Errors", len(validation_errors))
 
-        detected = detect_columns(source_df)
-        normalized_df, mappings = build_normalized_export(source_df, detected, settings)
-        errors = validate_export(normalized_df)
-        duplicates_removed = int(normalized_df.attrs.get("duplicates_removed", 0))
+        st.markdown("### Source Column Detection")
+        mapping_rows = []
+        display_fields = ["First Name", "Last Name", "Company Name", "Job Title", "Email", "Business Phone", "LinkedIn", "Country", "State or Province", "Location", "Description", "Market Segment", "Main Application", "Industry Sector"]
+        for target in display_fields:
+            mapping_rows.append({"Dynamics Field": target, "Detected Source Column": detected_mapping.get(target) or "—"})
+        st.dataframe(pd.DataFrame(mapping_rows), use_container_width=True, hide_index=True)
+        if location_cols:
+            st.caption("Location-aware columns scanned: " + ", ".join(str(c) for c in location_cols))
 
-        st.markdown('<div class="section-title">Detected Source Mapping</div>', unsafe_allow_html=True)
-        render_mapping_summary(mappings, detected)
+        if validation_errors:
+            st.error("Validation errors found. Fix these before importing into Dynamics.")
+            with st.expander("View row-level validation errors", expanded=True):
+                for err in validation_errors[:500]:
+                    st.write(f"• {err}")
+                if len(validation_errors) > 500:
+                    st.write(f"… and {len(validation_errors) - 500} more errors.")
+        else:
+            st.success("File successfully normalized and ready for Dynamics import.")
 
-        left, right = st.columns([1.1, 1.4])
-        with left:
-            st.markdown('<div class="section-title">Validation Results</div>', unsafe_allow_html=True)
-            if duplicates_removed:
-                st.warning(f"Removed {duplicates_removed} duplicate row(s) by email, keeping the first occurrence.")
-            if errors:
-                st.error("Validation errors found. Fix these before importing into Dynamics.")
-                st.code("\n".join(errors[:300]), language="text")
-                if len(errors) > 300:
-                    st.caption(f"Showing first 300 of {len(errors)} errors.")
-            else:
-                st.success("File successfully normalized and ready for Dynamics import.")
+        st.markdown("### Dynamics-Ready Preview")
+        st.dataframe(normalized_df.head(100), use_container_width=True, hide_index=True)
+        st.download_button(
+            label="Download Dynamics CSV",
+            data=to_csv_bytes(normalized_df),
+            file_name="opalrt_dynamics_import.csv",
+            mime="text/csv",
+            disabled=bool(validation_errors),
+        )
+        if validation_errors:
+            st.info("The download button is disabled until validation errors are resolved.")
+    except Exception as exc:
+        st.error(f"Unable to process this file: {exc}")
+else:
+    st.info("Upload a CSV or XLSX file to start normalization and validation.")
 
-            st.download_button(
-                "Download Dynamics-ready CSV",
-                data=to_csv_bytes(normalized_df),
-                file_name="opalrt_dynamics_import.csv",
-                mime="text/csv",
-                disabled=bool(errors),
-                use_container_width=True,
-            )
-            if errors:
-                st.caption("Download is disabled until validation errors are resolved.")
-
-        with right:
-            st.markdown('<div class="section-title">Dynamics Export Preview</div>', unsafe_allow_html=True)
-            st.dataframe(normalized_df.head(100), use_container_width=True, hide_index=True)
-
-        with st.expander("View cleaned source preview"):
-            st.dataframe(source_df.head(100), use_container_width=True, hide_index=True)
-
-    st.markdown(
-        f"""
-        <div class="footer">
-            Built by <strong>Arnaud Joakim</strong> · <a href="mailto:{FOOTER_EMAIL}">{FOOTER_EMAIL}</a>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-if __name__ == "__main__":
-    main()
+st.markdown(
+    f"""
+    <div class="footer">Built by Arnaud Joakim · <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a></div>
+    """,
+    unsafe_allow_html=True,
+)
