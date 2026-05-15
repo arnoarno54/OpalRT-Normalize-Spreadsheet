@@ -13,50 +13,54 @@ st.set_page_config(
 )
 
 # =========================================================
-# OPAL-RT BRANDING
+# CLEAN OPAL-RT BRANDING
 # =========================================================
 
 st.markdown("""
 <style>
 
-html, body, [class*="css"] {
-    background-color: #071B4D;
-    color: white;
+.stApp {
+    background-color: #F4F7FB;
 }
 
-.main {
-    background: linear-gradient(180deg,#071B4D 0%, #0A2A7A 100%);
-}
-
-.block-container {
+.main .block-container {
     padding-top: 2rem;
-    max-width: 1500px;
+    max-width: 1400px;
 }
 
-h1 {
+.hero-section {
+    background: linear-gradient(135deg,#003B8E 0%, #071B4D 100%);
+    padding: 45px;
+    border-radius: 18px;
     color: white;
-    font-size: 3rem;
+    margin-bottom: 35px;
+}
+
+.hero-title {
+    font-size: 42px;
     font-weight: 700;
+    margin-bottom: 10px;
 }
 
-h2, h3 {
-    color: white;
+.hero-subtitle {
+    font-size: 18px;
+    opacity: 0.9;
 }
 
-p, li, label, div {
-    color: white;
+.info-box {
+    background: white;
+    padding: 25px;
+    border-radius: 14px;
+    border-left: 6px solid #00AEEF;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }
 
-section[data-testid="stSidebar"] {
-    background-color: #05163D;
-}
-
-.stTextInput input,
-.stTextArea textarea,
-.stSelectbox div[data-baseweb="select"] {
-    background-color: white !important;
-    color: black !important;
-    border-radius: 8px;
+.section-title {
+    color: #071B4D;
+    font-size: 30px;
+    font-weight: 700;
+    margin-bottom: 10px;
 }
 
 .stButton>button,
@@ -65,59 +69,66 @@ section[data-testid="stSidebar"] {
     color: white;
     border-radius: 10px;
     border: none;
+    padding: 12px 24px;
     font-weight: 600;
-    padding: 12px 20px;
 }
 
-.required-box {
-    background: rgba(255,255,255,0.08);
-    border-left: 5px solid #00AEEF;
-    padding: 20px;
+.stDownloadButton>button:hover {
+    background-color: #0095d0;
+    color: white;
+}
+
+.validation-good {
+    background: #DFF6E5;
+    color: #146C2E;
+    padding: 18px;
     border-radius: 10px;
-    margin-bottom: 30px;
+    margin-top: 15px;
 }
 
-.stDataFrame {
-    background-color: white;
-}
-
-hr {
-    border-color: rgba(255,255,255,0.2);
+.validation-bad {
+    background: #FFE4E4;
+    color: #8A1C1C;
+    padding: 18px;
+    border-radius: 10px;
+    margin-top: 15px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HEADER
-# =========================================================
-
-col1, col2 = st.columns([1, 4])
-
-with col1:
-    st.image(
-        "https://www.opal-rt.com/wp-content/uploads/2024/02/OPALRT-logo-white.png",
-        width=240
-    )
-
-with col2:
-    st.title("Dynamics Lead Import Normalizer")
-    st.markdown(
-        "Prepare CRM-ready lead imports for Microsoft Dynamics"
-    )
-
-st.markdown("---")
-
-# =========================================================
-# REQUIRED FIELDS
+# HERO SECTION
 # =========================================================
 
 st.markdown("""
-<div class="required-box">
+<div class="hero-section">
 
-<h3>Mandatory Lead Fields</h3>
+<img src="https://www.opal-rt.com/wp-content/uploads/2024/02/OPALRT-logo-white.png" width="240">
 
-<ul>
+<div class="hero-title">
+Dynamics Lead Import Normalizer
+</div>
+
+<div class="hero-subtitle">
+Prepare CRM-ready lead imports for Microsoft Dynamics
+</div>
+
+</div>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# REQUIRED FIELD BOX
+# =========================================================
+
+st.markdown("""
+<div class="info-box">
+
+<h3 style="color:#071B4D;">
+Mandatory Lead Fields
+</h3>
+
+<ul style="color:#222; font-size:16px;">
 <li>Subject</li>
 <li>First Name</li>
 <li>Last Name</li>
@@ -129,13 +140,15 @@ st.markdown("""
 <li>Main Application</li>
 </ul>
 
+<p style="color:#555;">
 These validations are automatically checked before export.
+</p>
 
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# MARKET SEGMENTS
+# DROPDOWN VALUES
 # =========================================================
 
 MARKET_SEGMENTS = [
@@ -149,28 +162,23 @@ MARKET_SEGMENTS = [
 
 MAIN_APPLICATIONS = [
     "Let AI figure it out",
-
     "Autonomous Systems (Aero)",
     "Avionics System",
     "Electrical Actuators and Servos",
     "EVTOL",
     "More Electrical Aircraft",
     "Onboard System",
-
     "Charging",
     "EV/HEV Powertrain",
     "Full Vehicle Simulation",
     "ICE Powertrain",
-
     "Backup Power (UPS)",
     "Inverter/Converter",
     "Medium and Large Drive (>150KW)",
-
     "BMS Control",
     "Grid Infrastructure",
     "Onboard Power System",
     "Propulsion Control",
-
     "Conventional Generation",
     "Converter-Based Energy Resource",
     "Distribution",
@@ -181,14 +189,21 @@ MAIN_APPLICATIONS = [
 ]
 
 # =========================================================
-# GLOBAL SETTINGS
+# IMPORT SETTINGS
 # =========================================================
 
-st.header("Global Import Settings")
+st.markdown(
+    '<div class="section-title">Global Import Settings</div>',
+    unsafe_allow_html=True
+)
 
-colA, colB, colC = st.columns(3)
+st.write(
+    "These values will automatically be applied to all imported rows."
+)
 
-with colA:
+col1, col2, col3 = st.columns(3)
+
+with col1:
 
     subject = st.text_input(
         "Subject *",
@@ -216,7 +231,7 @@ with colA:
         MARKET_SEGMENTS
     )
 
-with colB:
+with col2:
 
     rating = st.selectbox(
         "Rating",
@@ -235,7 +250,7 @@ with colB:
         MAIN_APPLICATIONS
     )
 
-with colC:
+with col3:
 
     source_campaign = st.text_input(
         "Source Campaign"
@@ -243,10 +258,10 @@ with colC:
 
     description = st.text_area(
         "Description",
-        height=120
+        height=140
     )
 
-st.markdown("---")
+st.divider()
 
 # =========================================================
 # FILE UPLOAD
@@ -285,10 +300,6 @@ FINAL_COLUMNS = [
     "Allow Marketing Communication"
 ]
 
-# =========================================================
-# COLUMN MAPPING
-# =========================================================
-
 COLUMN_MAPPING = {
     "firstname": "First Name",
     "first name": "First Name",
@@ -296,13 +307,10 @@ COLUMN_MAPPING = {
 
     "lastname": "Last Name",
     "last name": "Last Name",
-    "surname": "Last Name",
 
     "company": "Company Name",
-    "organization": "Company Name",
 
     "email": "Email",
-    "mail": "Email",
 
     "phone": "Business Phone",
 
@@ -353,27 +361,25 @@ def infer_market_segment(row):
         "utility",
         "transmission",
         "distribution",
-        "power system",
         "microgrid",
-        "hvdc",
-        "renewable"
+        "renewable",
+        "hvdc"
     ]):
         return "Power System"
 
     if any(x in text for x in [
-        "automotive",
-        "vehicle",
-        "ev",
         "battery",
-        "charging"
+        "ev",
+        "vehicle",
+        "automotive"
     ]):
         return "Automotive"
 
     if any(x in text for x in [
         "aircraft",
+        "flight",
         "avionics",
-        "aerospace",
-        "flight"
+        "aerospace"
     ]):
         return "Aerospace"
 
@@ -395,20 +401,17 @@ def infer_main_application(row):
     if "hvdc" in text:
         return "FACTS & HVDC"
 
-    if "charging" in text:
-        return "Charging"
-
     if "battery" in text:
         return "BMS Control"
 
-    if "transmission" in text:
-        return "Transmission"
+    if "charging" in text:
+        return "Charging"
 
     if "distribution" in text:
         return "Distribution"
 
-    if "renewable" in text:
-        return "Converter-Based Energy Resource"
+    if "transmission" in text:
+        return "Transmission"
 
     return "Grid Infrastructure"
 
@@ -418,6 +421,7 @@ def infer_main_application(row):
 
 if uploaded_file:
 
+    # READ FILE
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
 
@@ -427,7 +431,7 @@ if uploaded_file:
     # REMOVE GHOST COLUMNS
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
-    # STANDARDIZE COLUMNS
+    # STANDARDIZE HEADERS
     new_columns = {}
 
     for col in df.columns:
@@ -461,10 +465,7 @@ if uploaded_file:
     df["Source Campaign"] = source_campaign
     df["Allow Marketing Communication"] = allow_marketing
 
-    # =====================================================
     # AI INFERENCE
-    # =====================================================
-
     if market_segment == "Let AI figure it out":
 
         df["Market Segment"] = df.apply(
@@ -488,9 +489,14 @@ if uploaded_file:
     # FINAL ORDER
     df = df[FINAL_COLUMNS]
 
-    st.subheader("Dynamics-Ready Import File")
+    st.divider()
 
-    st.dataframe(df)
+    st.markdown(
+        '<div class="section-title">Dynamics-Ready Import File</div>',
+        unsafe_allow_html=True
+    )
+
+    st.dataframe(df, use_container_width=True)
 
     # EXPORT
     csv = df.to_csv(index=False).encode("utf-8")
@@ -501,3 +507,9 @@ if uploaded_file:
         file_name="opalrt_dynamics_import.csv",
         mime="text/csv"
     )
+
+    st.markdown("""
+    <div class="validation-good">
+    File successfully normalized and ready for Dynamics import.
+    </div>
+    """, unsafe_allow_html=True)
