@@ -49,8 +49,6 @@ EXPORT_COLUMNS = [
 ]
 
 REQUIRED_FIELDS = ["Subject", "First Name", "Last Name", "Email", "Company Name", "Country"]
-CONDITIONAL_REQUIRED_FIELD = "State or Province"
-STATE_REQUIRED_COUNTRIES = {"canada", "united states", "united states of america", "usa", "us"}
 
 LEAD_SOURCE_VALUES = [
     "Shows",
@@ -172,6 +170,9 @@ COLUMN_ALIASES = {
     "Country": ["country", "country/region", "country region", "nation"],
     "State or Province": ["state", "province", "state/province", "state or province", "region", "territory"],
     "Description": ["description", "notes", "comment", "comments", "details"],
+    "Market Segment": ["market segment", "marketsegment", "segment", "market", "crm market segment"],
+    "Main Application": ["main application", "mainapplication", "application", "main app", "use case", "crm main application"],
+    "Industry Sector": ["industry sector", "industrysector", "industry", "sector", "vertical", "crm industry sector"],
     "Location": ["location", "hq location", "office location", "city", "address", "headquarters"],
 }
 
@@ -506,6 +507,28 @@ def detect_state_from_text(text: str, country: str = "") -> str:
     return ""
 
 
+def canonical_choice(value: object, allowed_values: List[str]) -> str:
+    """Return the exact CRM dropdown value for a case-insensitive source match, or blank/cleaned source value."""
+    text = clean_text(value)
+    if not text:
+        return ""
+    normalized = normalize_header(text)
+    for option in allowed_values:
+        if option and normalize_header(option) == normalized:
+            return option
+    return text
+
+
+def canonical_main_application(value: object, market_segment: object) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    segment = canonical_choice(market_segment, MARKET_SEGMENT_VALUES)
+    allowed = MARKET_SEGMENT_APPLICATIONS.get(segment, [""])
+    canonical = canonical_choice(text, allowed)
+    return canonical
+
+
 def create_normalized_export(df_raw: pd.DataFrame, global_settings: Dict[str, str]) -> Tuple[pd.DataFrame, Dict[str, Optional[str]], int]:
     df = remove_ghost_columns(df_raw)
     df = df.copy()
@@ -525,6 +548,9 @@ def create_normalized_export(df_raw: pd.DataFrame, global_settings: Dict[str, st
         "State or Province",
         "Description",
         "LinkedIn",
+        "Market Segment",
+        "Main Application",
+        "Industry Sector",
     ]
     for field in source_fields:
         output[field] = value_from_mapping(df, mapping, field)
@@ -548,12 +574,42 @@ def create_normalized_export(df_raw: pd.DataFrame, global_settings: Dict[str, st
         else:
             output[col] = output[col].map(clean_text)
 
-    # Apply CRM/global fields to every row. Description respects source data unless user supplies a global value.
-    for field, value in global_settings.items():
-        value = clean_text(value)
-        if field == "Description" and not value:
-            continue
-        output[field] = value
+    # Canonicalize optional CRM dropdown values when they are present in source data.
+    # These three fields intentionally remain blank unless the uploaded file contains a
+    # matching source column/value or the user explicitly selects a dropdown value.
+    output["Market Segment"] = output["Market Segment"].map(lambda v: canonical_choice(v, MARKET_SEGMENT_VALUES))
+    output["Industry Sector"] = output["Industry Sector"].map(lambda v: canonical_choice(v, INDUSTRY_SECTOR_VALUES))
+
+    # Apply required/global CRM fields. Blank optional global settings must not overwrite
+    # source values. Market Segment is applied before Main Application so a source
+    # Main Application can be validated against a user-selected Market Segment.
+    always_apply_fields = ["Subject", "Lead Source", "Rating", "Allow Marketing Communication"]
+    optional_apply_fields = ["Source Campaign", "Description"]
+
+    for field in always_apply_fields:
+        output[field] = clean_text(global_settings.get(field, ""))
+
+    for field in optional_apply_fields:
+        value = clean_text(global_settings.get(field, ""))
+        if value:
+            output[field] = value
+
+    selected_market_segment = clean_text(global_settings.get("Market Segment", ""))
+    selected_industry_sector = clean_text(global_settings.get("Industry Sector", ""))
+    selected_main_application = clean_text(global_settings.get("Main Application", ""))
+
+    if selected_market_segment:
+        output["Market Segment"] = canonical_choice(selected_market_segment, MARKET_SEGMENT_VALUES)
+    if selected_industry_sector:
+        output["Industry Sector"] = canonical_choice(selected_industry_sector, INDUSTRY_SECTOR_VALUES)
+
+    if selected_main_application:
+        output["Main Application"] = selected_main_application
+    else:
+        output["Main Application"] = [
+            canonical_main_application(app, segment)
+            for app, segment in zip(output["Main Application"], output["Market Segment"])
+        ]
 
     # Remove duplicates by valid/non-empty email, keeping first occurrence. Blank emails remain for validation.
     before = len(output)
@@ -572,11 +628,6 @@ def validate_export(df: pd.DataFrame) -> List[str]:
         for field in REQUIRED_FIELDS:
             if clean_text(row.get(field, "")) == "":
                 errors.append(f"Row {row_number}: Missing required field → {field}")
-
-        country = clean_text(row.get("Country", ""))
-        country_norm = normalize_header(country)
-        if country_norm in STATE_REQUIRED_COUNTRIES and clean_text(row.get(CONDITIONAL_REQUIRED_FIELD, "")) == "":
-            errors.append(f"Row {row_number}: Missing required field → {CONDITIONAL_REQUIRED_FIELD} is required for {country}")
 
         email = clean_email(row.get("Email", ""))
         if email and not EMAIL_RE.match(email):
@@ -676,8 +727,7 @@ with right:
         """
         <div class="card">
         <b>Required:</b> Subject *, First Name *, Last Name *, Email *, Company Name *, Country *<br><br>
-        <b>Conditional:</b> State or Province * when Country is Canada or United States<br><br>
-        <b>Optional:</b> Market Segment and Main Application remain blank when not selected.
+        <b>Optional:</b> State or Province, Market Segment, Main Application, and Industry Sector remain blank when not supplied by the source file or selected above.
         </div>
         """,
         unsafe_allow_html=True,
@@ -714,7 +764,7 @@ if uploaded_file:
 
         st.markdown("### Source Column Detection")
         mapping_rows = []
-        for target in ["First Name", "Last Name", "Company Name", "Job Title", "Email", "Business Phone", "LinkedIn", "Country", "State or Province", "Location", "Description"]:
+        for target in ["First Name", "Last Name", "Company Name", "Job Title", "Email", "Business Phone", "LinkedIn", "Country", "State or Province", "Location", "Description", "Market Segment", "Main Application", "Industry Sector"]:
             mapping_rows.append({"Dynamics Field": target, "Detected Source Column": detected_mapping.get(target) or "—"})
         st.dataframe(pd.DataFrame(mapping_rows), use_container_width=True, hide_index=True)
 
