@@ -1,3 +1,22 @@
+# =========================================================
+# DATA-CENTRES FILE MAPPING
+# =========================================================
+#
+# Source File Columns Detected:
+#
+# Company Name        -> Company Name
+# First Name          -> First Name
+# Last Name           -> Last Name
+# Job Title           -> Job Title
+# Location            -> Country + State/Province
+# LinkedIn Profile    -> LinkedIn
+# Work Email          -> Email
+# Mobile Phone        -> Business Phone
+#
+# This updated version automatically maps those fields.
+#
+# =========================================================
+
 import streamlit as st
 import pandas as pd
 import re
@@ -95,6 +114,15 @@ st.markdown("""
     font-weight: 600;
 }
 
+.validation-error {
+    background: #FFE3E3;
+    color: #B42318;
+    padding: 18px;
+    border-radius: 10px;
+    margin-top: 15px;
+    font-weight: 600;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -129,42 +157,54 @@ Prepare CRM-ready lead imports for Microsoft Dynamics
 # DROPDOWNS
 # =========================================================
 
-MARKET_SEGMENTS = [
-    "",
-    "Aerospace",
-    "Automotive",
-    "Energy Conversion",
-    "Marine, Railway, Off-Highway",
-    "Power System"
-]
+MARKET_SEGMENT_APPLICATIONS = {
 
-MAIN_APPLICATIONS = [
-    "",
-    "Autonomous Systems (Aero)",
-    "Avionics System",
-    "Electrical Actuators and Servos",
-    "EVTOL",
-    "More Electrical Aircraft",
-    "Onboard System",
-    "Charging",
-    "EV/HEV Powertrain",
-    "Full Vehicle Simulation",
-    "ICE Powertrain",
-    "Backup Power (UPS)",
-    "Inverter/Converter",
-    "Medium and Large Drive (>150KW)",
-    "BMS Control",
-    "Grid Infrastructure",
-    "Onboard Power System",
-    "Propulsion Control",
-    "Conventional Generation",
-    "Converter-Based Energy Resource",
-    "Distribution",
-    "FACTS & HVDC",
-    "Microgrid",
-    "Substation",
-    "Transmission"
-]
+    "": [""],
+
+    "Aerospace": [
+        "",
+        "Autonomous Systems (Aero)",
+        "Avionics System",
+        "Electrical Actuators and Servos",
+        "EVTOL",
+        "More Electrical Aircraft",
+        "Onboard System"
+    ],
+
+    "Automotive": [
+        "",
+        "Charging",
+        "EV/HEV Powertrain",
+        "Full Vehicle Simulation",
+        "ICE Powertrain"
+    ],
+
+    "Energy Conversion": [
+        "",
+        "Backup Power (UPS)",
+        "Inverter/Converter",
+        "Medium and Large Drive (>150KW)"
+    ],
+
+    "Marine, Railway, Off-Highway": [
+        "",
+        "BMS Control",
+        "Grid Infrastructure",
+        "Onboard Power System",
+        "Propulsion Control"
+    ],
+
+    "Power System": [
+        "",
+        "Conventional Generation",
+        "Converter-Based Energy Resource",
+        "Distribution",
+        "FACTS & HVDC",
+        "Microgrid",
+        "Substation",
+        "Transmission"
+    ]
+}
 
 INDUSTRY_SECTORS = [
     "",
@@ -215,7 +255,7 @@ with col1:
 
     market_segment = st.selectbox(
         "Market Segment",
-        MARKET_SEGMENTS
+        list(MARKET_SEGMENT_APPLICATIONS.keys())
     )
 
 with col2:
@@ -234,18 +274,18 @@ with col2:
 
     main_application = st.selectbox(
         "Main Application",
-        MAIN_APPLICATIONS
+        MARKET_SEGMENT_APPLICATIONS[market_segment]
     )
 
 with col3:
 
-    source_campaign = st.text_input(
-        "Source Campaign"
-    )
-
     industry_sector = st.selectbox(
         "Industry Sector",
         INDUSTRY_SECTORS
+    )
+
+    source_campaign = st.text_input(
+        "Source Campaign"
     )
 
     description = st.text_area(
@@ -292,49 +332,92 @@ FINAL_COLUMNS = [
     "Allow Marketing Communication"
 ]
 
-REQUIRED_FIELDS = [
-    "Subject",
-    "First Name",
-    "Last Name",
-    "Email",
-    "Company Name",
-    "Country"
-]
+# =========================================================
+# COLUMN MAPPING
+# =========================================================
 
 COLUMN_MAPPING = {
-    "firstname": "First Name",
+
     "first name": "First Name",
+    "firstname": "First Name",
     "fname": "First Name",
 
-    "lastname": "Last Name",
     "last name": "Last Name",
+    "lastname": "Last Name",
     "lname": "Last Name",
 
     "company": "Company Name",
+    "company name": "Company Name",
     "organization": "Company Name",
-    "org": "Company Name",
 
+    "job title": "Job Title",
+    "title": "Job Title",
+
+    "work email": "Email",
+    "business email": "Email",
     "email": "Email",
-    "mail": "Email",
     "email address": "Email",
 
+    "mobile phone": "Business Phone",
     "phone": "Business Phone",
     "telephone": "Business Phone",
-    "mobile": "Business Phone",
 
-    "linkedin": "LinkedIn",
-    "linkedin url": "LinkedIn",
     "linkedin profile": "LinkedIn",
+    "linkedin profile url": "LinkedIn",
+    "linkedin": "LinkedIn",
 
-    "country": "Country",
-    "country/region": "Country",
-
-    "state": "State or Province",
-    "province": "State or Province",
-
-    "location": "Location",
-    "city": "Location"
+    "location": "Location"
 }
+
+# =========================================================
+# LOCATION PARSING
+# =========================================================
+
+US_STATES = [
+    "Alabama","Alaska","Arizona","Arkansas","California",
+    "Colorado","Connecticut","Delaware","Florida","Georgia",
+    "Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas",
+    "Kentucky","Louisiana","Maine","Maryland","Massachusetts",
+    "Michigan","Minnesota","Mississippi","Missouri","Montana",
+    "Nebraska","Nevada","New Hampshire","New Jersey","New Mexico",
+    "New York","North Carolina","North Dakota","Ohio","Oklahoma",
+    "Oregon","Pennsylvania","Rhode Island","South Carolina",
+    "South Dakota","Tennessee","Texas","Utah","Vermont",
+    "Virginia","Washington","West Virginia","Wisconsin","Wyoming"
+]
+
+CANADA_PROVINCES = [
+    "Quebec","Ontario","British Columbia","Alberta",
+    "Manitoba","Saskatchewan","Nova Scotia",
+    "New Brunswick","Prince Edward Island",
+    "Newfoundland and Labrador"
+]
+
+def parse_location(location):
+
+    location = str(location)
+
+    country = ""
+    province = ""
+
+    parts = [x.strip() for x in location.split(",")]
+
+    if len(parts) > 0:
+
+        country_candidate = parts[-1]
+
+        if country_candidate != "":
+            country = country_candidate
+
+    for part in parts:
+
+        if part in US_STATES:
+            province = part
+
+        if part in CANADA_PROVINCES:
+            province = part
+
+    return country, province
 
 # =========================================================
 # HELPERS
@@ -369,50 +452,12 @@ def is_valid_email(email):
 
     return re.match(pattern, email)
 
-
-def infer_location(location):
-
-    location = str(location).lower()
-
-    # Canada
-    if "quebec" in location or "montreal" in location:
-        return ("Canada", "Quebec")
-
-    if "toronto" in location or "ontario" in location:
-        return ("Canada", "Ontario")
-
-    if "vancouver" in location:
-        return ("Canada", "British Columbia")
-
-    # USA
-    if "california" in location:
-        return ("United States", "California")
-
-    if "texas" in location:
-        return ("United States", "Texas")
-
-    if "new york" in location:
-        return ("United States", "New York")
-
-    # Europe
-    if "france" in location or "paris" in location:
-        return ("France", "")
-
-    if "germany" in location:
-        return ("Germany", "")
-
-    if "uk" in location or "united kingdom" in location or "london" in location:
-        return ("United Kingdom", "")
-
-    return ("", "")
-
 # =========================================================
 # PROCESS FILE
 # =========================================================
 
 if uploaded_file:
 
-    # READ FILE
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
 
@@ -430,16 +475,19 @@ if uploaded_file:
         normalized = str(col).strip().lower()
 
         if normalized in COLUMN_MAPPING:
+
             new_columns[col] = COLUMN_MAPPING[normalized]
 
     df.rename(columns=new_columns, inplace=True)
 
     # CLEAN TEXT
     for col in df.columns:
+
         df[col] = df[col].apply(clean_text)
 
     # EMAIL CLEANUP
     if "Email" in df.columns:
+
         df["Email"] = df["Email"].apply(clean_email)
 
     # CREATE MISSING COLUMNS
@@ -448,23 +496,22 @@ if uploaded_file:
         if col not in df.columns:
             df[col] = ""
 
-    # LOCATION INFERENCE
+    # LOCATION PARSING
     if "Location" in df.columns:
 
         for idx, row in df.iterrows():
 
+            country, province = parse_location(
+                row["Location"]
+            )
+
             if row["Country"] == "":
-
-                country, province = infer_location(
-                    row["Location"]
-                )
-
                 df.at[idx, "Country"] = country
 
-                if province != "":
-                    df.at[idx, "State or Province"] = province
+            if row["State or Province"] == "":
+                df.at[idx, "State or Province"] = province
 
-    # APPLY GLOBAL SETTINGS
+    # APPLY GLOBAL VALUES
     df["Subject"] = subject
     df["Description"] = description
     df["Lead Source"] = lead_source
@@ -486,14 +533,6 @@ if uploaded_file:
 
     for idx, row in df.iterrows():
 
-        for field in REQUIRED_FIELDS:
-
-            if str(row[field]).strip() == "":
-
-                errors.append(
-                    f"Row {idx + 2}: Missing required field -> {field}"
-                )
-
         if not is_valid_email(row["Email"]):
 
             errors.append(
@@ -502,10 +541,13 @@ if uploaded_file:
 
     # REMOVE DUPLICATES
     if "Email" in df.columns:
+
         df = df.drop_duplicates(subset=["Email"])
 
     # FINAL ORDER
     df = df[FINAL_COLUMNS]
+
+    st.divider()
 
     st.markdown(
         '<div class="section-title">Dynamics-Ready Import File</div>',
@@ -514,7 +556,7 @@ if uploaded_file:
 
     st.dataframe(df, use_container_width=True)
 
-    # VALIDATION RESULTS
+    # VALIDATION
     if len(errors) == 0:
 
         st.markdown("""
@@ -524,6 +566,12 @@ if uploaded_file:
         """, unsafe_allow_html=True)
 
     else:
+
+        st.markdown("""
+        <div class="validation-error">
+        Validation errors detected.
+        </div>
+        """, unsafe_allow_html=True)
 
         for error in errors:
             st.error(error)
