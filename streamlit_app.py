@@ -8,12 +8,12 @@ from datetime import datetime
 # =========================================================
 
 st.set_page_config(
-    page_title="OPAL-RT Dynamics Lead Import Normalizer",
+    page_title="Opal RT Spreadsheet Cleaner",
     layout="wide"
 )
 
 # =========================================================
-# CLEAN OPAL-RT BRANDING
+# STYLING
 # =========================================================
 
 st.markdown("""
@@ -24,41 +24,54 @@ st.markdown("""
 }
 
 .main .block-container {
-    padding-top: 2rem;
-    max-width: 1400px;
+    padding-top: 1.5rem;
+    max-width: 1450px;
 }
 
-.hero-section {
-    background: linear-gradient(135deg,#003B8E 0%, #071B4D 100%);
-    padding: 45px;
-    border-radius: 18px;
-    color: white;
+.hero-container {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
     margin-bottom: 35px;
 }
 
+.hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        rgba(0,32,91,0.92) 0%,
+        rgba(0,32,91,0.75) 40%,
+        rgba(0,32,91,0.35) 100%
+    );
+}
+
+.hero-content {
+    position: absolute;
+    top: 50%;
+    left: 60px;
+    transform: translateY(-50%);
+    color: white;
+    z-index: 2;
+}
+
 .hero-title {
-    font-size: 42px;
+    font-size: 52px;
     font-weight: 700;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .hero-subtitle {
-    font-size: 18px;
-    opacity: 0.9;
-}
-
-.info-box {
-    background: white;
-    padding: 25px;
-    border-radius: 14px;
-    border-left: 6px solid #00AEEF;
-    margin-bottom: 25px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    font-size: 20px;
+    opacity: 0.95;
 }
 
 .section-title {
     color: #071B4D;
-    font-size: 30px;
+    font-size: 34px;
     font-weight: 700;
     margin-bottom: 10px;
 }
@@ -73,9 +86,18 @@ st.markdown("""
     font-weight: 600;
 }
 
+.stButton>button:hover,
 .stDownloadButton>button:hover {
-    background-color: #0095d0;
+    background-color: #0093d1;
     color: white;
+}
+
+div[data-baseweb="select"] > div {
+    border-radius: 10px !important;
+}
+
+input, textarea {
+    border-radius: 10px !important;
 }
 
 .validation-good {
@@ -84,30 +106,28 @@ st.markdown("""
     padding: 18px;
     border-radius: 10px;
     margin-top: 15px;
-}
-
-.validation-bad {
-    background: #FFE4E4;
-    color: #8A1C1C;
-    padding: 18px;
-    border-radius: 10px;
-    margin-top: 15px;
+    font-weight: 600;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO SECTION
+# HERO IMAGE
 # =========================================================
 
 st.markdown("""
-<div class="hero-section">
+<div class="hero-container">
 
-<img src="https://www.opal-rt.com/wp-content/uploads/2024/02/OPALRT-logo-white.png" width="240">
+<img src="https://www.opal-rt.com/wp-content/uploads/2025/05/Hero-News-OPAL-RT.jpg"
+style="width:100%; height:420px; object-fit:cover;">
+
+<div class="hero-overlay"></div>
+
+<div class="hero-content">
 
 <div class="hero-title">
-Dynamics Lead Import Normalizer
+Opal RT Spreadsheet Cleaner
 </div>
 
 <div class="hero-subtitle">
@@ -115,34 +135,6 @@ Prepare CRM-ready lead imports for Microsoft Dynamics
 </div>
 
 </div>
-""", unsafe_allow_html=True)
-
-# =========================================================
-# REQUIRED FIELD BOX
-# =========================================================
-
-st.markdown("""
-<div class="info-box">
-
-<h3 style="color:#071B4D;">
-Mandatory Lead Fields
-</h3>
-
-<ul style="color:#222; font-size:16px;">
-<li>Subject</li>
-<li>First Name</li>
-<li>Last Name</li>
-<li>Email</li>
-<li>Company</li>
-<li>Country/Region</li>
-<li>State/Province</li>
-<li>Market Segment</li>
-<li>Main Application</li>
-</ul>
-
-<p style="color:#555;">
-These validations are automatically checked before export.
-</p>
 
 </div>
 """, unsafe_allow_html=True)
@@ -334,7 +326,7 @@ def clean_text(value):
 
     value = str(value).strip()
 
-    value = re.sub(r"\s+", " ", value)
+    value = re.sub(r"\\s+", " ", value)
 
     return value
 
@@ -421,7 +413,6 @@ def infer_main_application(row):
 
 if uploaded_file:
 
-    # READ FILE
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
 
