@@ -3,84 +3,101 @@ import pandas as pd
 import re
 from datetime import datetime
 
-# =====================================================
+# =========================================================
 # PAGE CONFIG
-# =====================================================
+# =========================================================
 
 st.set_page_config(
     page_title="OPAL-RT Dynamics Lead Import Normalizer",
     layout="wide"
 )
 
-# =====================================================
-# CUSTOM CSS / BRANDING
-# =====================================================
+# =========================================================
+# OPAL-RT BRANDING
+# =========================================================
 
 st.markdown("""
 <style>
 
+html, body, [class*="css"] {
+    background-color: #071B4D;
+    color: white;
+}
+
 .main {
-    background-color: #f5f7fb;
-}
-
-h1 {
-    color: #002B5C;
-    font-weight: 700;
-}
-
-h2, h3 {
-    color: #002B5C;
-}
-
-.stButton>button {
-    background-color: #00A3E0;
-    color: white;
-    border-radius: 8px;
-    border: none;
-    font-weight: 600;
-}
-
-.stDownloadButton>button {
-    background-color: #00A3E0;
-    color: white;
-    border-radius: 8px;
-    border: none;
-    font-weight: 600;
+    background: linear-gradient(180deg,#071B4D 0%, #0A2A7A 100%);
 }
 
 .block-container {
     padding-top: 2rem;
+    max-width: 1500px;
+}
+
+h1 {
+    color: white;
+    font-size: 3rem;
+    font-weight: 700;
+}
+
+h2, h3 {
+    color: white;
+}
+
+p, li, label, div {
+    color: white;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #05163D;
+}
+
+.stTextInput input,
+.stTextArea textarea,
+.stSelectbox div[data-baseweb="select"] {
+    background-color: white !important;
+    color: black !important;
+    border-radius: 8px;
+}
+
+.stButton>button,
+.stDownloadButton>button {
+    background-color: #00AEEF;
+    color: white;
+    border-radius: 10px;
+    border: none;
+    font-weight: 600;
+    padding: 12px 20px;
 }
 
 .required-box {
-    background-color: #ffffff;
-    border-left: 5px solid #00A3E0;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 25px;
+    background: rgba(255,255,255,0.08);
+    border-left: 5px solid #00AEEF;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 30px;
 }
 
-.validation-box {
-    background-color: #ffffff;
-    border-left: 5px solid #002B5C;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 20px;
+.stDataFrame {
+    background-color: white;
+}
+
+hr {
+    border-color: rgba(255,255,255,0.2);
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# =====================================================
+# =========================================================
 # HEADER
-# =====================================================
+# =========================================================
 
 col1, col2 = st.columns([1, 4])
 
 with col1:
     st.image(
-        "https://www.opal-rt.com/wp-content/uploads/2022/09/OPALRT-logo.png",
-        width=220
+        "https://www.opal-rt.com/wp-content/uploads/2024/02/OPALRT-logo-white.png",
+        width=240
     )
 
 with col2:
@@ -89,29 +106,27 @@ with col2:
         "Prepare CRM-ready lead imports for Microsoft Dynamics"
     )
 
-st.divider()
+st.markdown("---")
 
-# =====================================================
-# REQUIRED FIELD INFO
-# =====================================================
+# =========================================================
+# REQUIRED FIELDS
+# =========================================================
 
 st.markdown("""
 <div class="required-box">
 
 <h3>Mandatory Lead Fields</h3>
 
-The following fields are required by the OPAL-RT Dynamics import process:
-
 <ul>
-<li><b>Subject</b></li>
-<li><b>First Name</b></li>
-<li><b>Last Name</b></li>
-<li><b>Email</b></li>
-<li><b>Company</b></li>
-<li><b>Country/Region</b></li>
-<li><b>State/Province</b></li>
-<li><b>Market Segment</b></li>
-<li><b>Main Application</b></li>
+<li>Subject</li>
+<li>First Name</li>
+<li>Last Name</li>
+<li>Email</li>
+<li>Company</li>
+<li>Country/Region</li>
+<li>State/Province</li>
+<li>Market Segment</li>
+<li>Main Application</li>
 </ul>
 
 These validations are automatically checked before export.
@@ -119,15 +134,57 @@ These validations are automatically checked before export.
 </div>
 """, unsafe_allow_html=True)
 
-# =====================================================
-# GLOBAL IMPORT SETTINGS
-# =====================================================
+# =========================================================
+# MARKET SEGMENTS
+# =========================================================
+
+MARKET_SEGMENTS = [
+    "Let AI figure it out",
+    "Aerospace",
+    "Automotive",
+    "Energy Conversion",
+    "Marine, Railway, Off-Highway",
+    "Power System"
+]
+
+MAIN_APPLICATIONS = [
+    "Let AI figure it out",
+
+    "Autonomous Systems (Aero)",
+    "Avionics System",
+    "Electrical Actuators and Servos",
+    "EVTOL",
+    "More Electrical Aircraft",
+    "Onboard System",
+
+    "Charging",
+    "EV/HEV Powertrain",
+    "Full Vehicle Simulation",
+    "ICE Powertrain",
+
+    "Backup Power (UPS)",
+    "Inverter/Converter",
+    "Medium and Large Drive (>150KW)",
+
+    "BMS Control",
+    "Grid Infrastructure",
+    "Onboard Power System",
+    "Propulsion Control",
+
+    "Conventional Generation",
+    "Converter-Based Energy Resource",
+    "Distribution",
+    "FACTS & HVDC",
+    "Microgrid",
+    "Substation",
+    "Transmission"
+]
+
+# =========================================================
+# GLOBAL SETTINGS
+# =========================================================
 
 st.header("Global Import Settings")
-
-st.write(
-    "These values will be automatically applied to all imported rows."
-)
 
 colA, colB, colC = st.columns(3)
 
@@ -154,25 +211,28 @@ with colA:
         index=2
     )
 
+    market_segment = st.selectbox(
+        "Market Segment *",
+        MARKET_SEGMENTS
+    )
+
 with colB:
 
     rating = st.selectbox(
         "Rating",
-        [
-            "Cold",
-            "Warm",
-            "Hot"
-        ],
+        ["Cold", "Warm", "Hot"],
         index=0
     )
 
     allow_marketing = st.selectbox(
         "Allow Marketing Communication",
-        [
-            "Yes",
-            "No"
-        ],
+        ["Yes", "No"],
         index=0
+    )
+
+    main_application = st.selectbox(
+        "Main Application *",
+        MAIN_APPLICATIONS
     )
 
 with colC:
@@ -186,32 +246,20 @@ with colC:
         height=120
     )
 
-st.divider()
+st.markdown("---")
 
-# =====================================================
+# =========================================================
 # FILE UPLOAD
-# =====================================================
+# =========================================================
 
 uploaded_file = st.file_uploader(
     "Upload CSV or Excel File",
     type=["csv", "xlsx"]
 )
 
-# =====================================================
-# CONFIG
-# =====================================================
-
-REQUIRED_COLUMNS = [
-    "Subject",
-    "First Name",
-    "Last Name",
-    "Email",
-    "Company Name",
-    "Country",
-    "State or Province",
-    "Market Segment",
-    "Main Application"
-]
+# =========================================================
+# FINAL COLUMNS
+# =========================================================
 
 FINAL_COLUMNS = [
     "(Do Not Modify) Lead",
@@ -237,6 +285,10 @@ FINAL_COLUMNS = [
     "Allow Marketing Communication"
 ]
 
+# =========================================================
+# COLUMN MAPPING
+# =========================================================
+
 COLUMN_MAPPING = {
     "firstname": "First Name",
     "first name": "First Name",
@@ -245,21 +297,14 @@ COLUMN_MAPPING = {
     "lastname": "Last Name",
     "last name": "Last Name",
     "surname": "Last Name",
-    "lname": "Last Name",
-
-    "jobtitle": "Job Title",
-    "title": "Job Title",
 
     "company": "Company Name",
     "organization": "Company Name",
-    "org": "Company Name",
 
     "email": "Email",
     "mail": "Email",
 
     "phone": "Business Phone",
-    "telephone": "Business Phone",
-    "mobile": "Business Phone",
 
     "country": "Country",
     "country/region": "Country",
@@ -267,31 +312,21 @@ COLUMN_MAPPING = {
     "state": "State or Province",
     "province": "State or Province",
 
-    "linkedin": "LinkedIn",
-    "linkedin_url": "LinkedIn"
+    "linkedin": "LinkedIn"
 }
 
-COUNTRY_NORMALIZATION = {
-    "usa": "United States",
-    "us": "United States",
-    "u.s.a": "United States",
-    "uk": "United Kingdom",
-    "uae": "United Arab Emirates",
-    "qc": "Quebec"
-}
-
-# =====================================================
+# =========================================================
 # HELPERS
-# =====================================================
+# =========================================================
 
 def clean_text(value):
 
     if pd.isna(value):
         return ""
 
-    value = str(value)
-    value = value.strip()
-    value = re.sub(r"\\s+", " ", value)
+    value = str(value).strip()
+
+    value = re.sub(r"\s+", " ", value)
 
     return value
 
@@ -304,33 +339,82 @@ def clean_email(email):
     return str(email).strip().lower()
 
 
-def is_valid_email(email):
+def infer_market_segment(row):
 
-    if email == "":
-        return False
+    text = " ".join([
+        str(row.get("Company Name", "")),
+        str(row.get("Job Title", "")),
+        str(row.get("Description", "")),
+        str(row.get("Email", ""))
+    ]).lower()
 
-    pattern = r'^[\\w\\.-]+@[\\w\\.-]+\\.\\w+$'
+    if any(x in text for x in [
+        "grid",
+        "utility",
+        "transmission",
+        "distribution",
+        "power system",
+        "microgrid",
+        "hvdc",
+        "renewable"
+    ]):
+        return "Power System"
 
-    return re.match(pattern, email)
+    if any(x in text for x in [
+        "automotive",
+        "vehicle",
+        "ev",
+        "battery",
+        "charging"
+    ]):
+        return "Automotive"
+
+    if any(x in text for x in [
+        "aircraft",
+        "avionics",
+        "aerospace",
+        "flight"
+    ]):
+        return "Aerospace"
+
+    return "Power System"
 
 
-def normalize_country(country):
+def infer_main_application(row):
 
-    if pd.isna(country):
-        return ""
+    text = " ".join([
+        str(row.get("Company Name", "")),
+        str(row.get("Job Title", "")),
+        str(row.get("Description", "")),
+        str(row.get("Email", ""))
+    ]).lower()
 
-    cleaned = str(country).strip()
+    if "microgrid" in text:
+        return "Microgrid"
 
-    lowered = cleaned.lower()
+    if "hvdc" in text:
+        return "FACTS & HVDC"
 
-    if lowered in COUNTRY_NORMALIZATION:
-        return COUNTRY_NORMALIZATION[lowered]
+    if "charging" in text:
+        return "Charging"
 
-    return cleaned
+    if "battery" in text:
+        return "BMS Control"
 
-# =====================================================
+    if "transmission" in text:
+        return "Transmission"
+
+    if "distribution" in text:
+        return "Distribution"
+
+    if "renewable" in text:
+        return "Converter-Based Energy Resource"
+
+    return "Grid Infrastructure"
+
+# =========================================================
 # PROCESS FILE
-# =====================================================
+# =========================================================
 
 if uploaded_file:
 
@@ -340,14 +424,10 @@ if uploaded_file:
     else:
         df = pd.read_excel(uploaded_file)
 
-    st.subheader("Original Uploaded Data")
-
-    st.dataframe(df)
-
     # REMOVE GHOST COLUMNS
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
-    # STANDARDIZE COLUMN NAMES
+    # STANDARDIZE COLUMNS
     new_columns = {}
 
     for col in df.columns:
@@ -363,16 +443,13 @@ if uploaded_file:
     for col in df.columns:
         df[col] = df[col].apply(clean_text)
 
-    # EMAIL
+    # EMAIL CLEANUP
     if "Email" in df.columns:
         df["Email"] = df["Email"].apply(clean_email)
 
-    # COUNTRY
-    if "Country" in df.columns:
-        df["Country"] = df["Country"].apply(normalize_country)
-
     # CREATE MISSING COLUMNS
     for col in FINAL_COLUMNS:
+
         if col not in df.columns:
             df[col] = ""
 
@@ -385,93 +462,37 @@ if uploaded_file:
     df["Allow Marketing Communication"] = allow_marketing
 
     # =====================================================
-    # VALIDATION
+    # AI INFERENCE
     # =====================================================
 
-    validation_errors = []
+    if market_segment == "Let AI figure it out":
 
-    for index, row in df.iterrows():
+        df["Market Segment"] = df.apply(
+            infer_market_segment,
+            axis=1
+        )
 
-        # REQUIRED FIELDS
-        for field in REQUIRED_COLUMNS:
+    else:
+        df["Market Segment"] = market_segment
 
-            if str(row[field]).strip() == "":
+    if main_application == "Let AI figure it out":
 
-                validation_errors.append(
-                    f"Row {index + 2}: Missing required field -> {field}"
-                )
+        df["Main Application"] = df.apply(
+            infer_main_application,
+            axis=1
+        )
 
-        # EMAIL VALIDATION
-        if not is_valid_email(row["Email"]):
+    else:
+        df["Main Application"] = main_application
 
-            validation_errors.append(
-                f"Row {index + 2}: Invalid email -> {row['Email']}"
-            )
-
-        # FIELD LENGTHS
-        if len(str(row["First Name"])) > 50:
-
-            validation_errors.append(
-                f"Row {index + 2}: First Name exceeds 50 characters"
-            )
-
-        if len(str(row["Last Name"])) > 50:
-
-            validation_errors.append(
-                f"Row {index + 2}: Last Name exceeds 50 characters"
-            )
-
-        if len(str(row["Company Name"])) > 100:
-
-            validation_errors.append(
-                f"Row {index + 2}: Company Name exceeds 100 characters"
-            )
-
-    # REMOVE DUPLICATES
-    if "Email" in df.columns:
-
-        df = df.drop_duplicates(subset=["Email"])
-
-    # FINAL COLUMN ORDER
+    # FINAL ORDER
     df = df[FINAL_COLUMNS]
-
-    st.divider()
-
-    # =====================================================
-    # RESULTS
-    # =====================================================
 
     st.subheader("Dynamics-Ready Import File")
 
     st.dataframe(df)
 
-    # =====================================================
-    # VALIDATION REPORT
-    # =====================================================
-
-    st.subheader("Validation Report")
-
-    if len(validation_errors) == 0:
-
-        st.success(
-            "No validation issues detected. File is ready for Dynamics import."
-        )
-
-    else:
-
-        st.markdown("""
-        <div class="validation-box">
-        <h4>Validation Issues Found</h4>
-        </div>
-        """, unsafe_allow_html=True)
-
-        for error in validation_errors:
-            st.warning(error)
-
-    # =====================================================
     # EXPORT
-    # =====================================================
-
     csv = df.to_csv(index=False).encode("utf-8")
 
     st.download_button(
