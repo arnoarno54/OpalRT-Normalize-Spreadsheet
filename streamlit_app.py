@@ -881,8 +881,14 @@ def parse_location_string(loc: str) -> Tuple[str, str]:
     if not s:
         return "", ""
 
+    # Normalise common alternate separators to commas so we can split uniformly.
+    # Handles pipe, slash, semicolon, newline, and " - " separators.
+    s_norm = re.sub(r"\s*[\|/;]\s*", ", ", s)
+    s_norm = re.sub(r"\s*\n\s*", ", ", s_norm)
+    s_norm = re.sub(r"\s+-\s+", ", ", s_norm)
+
     # Split on commas (and clean parts)
-    parts = [p.strip() for p in s.split(",") if p.strip()]
+    parts = [p.strip() for p in s_norm.split(",") if p.strip()]
 
     if not parts:
         return "", ""
@@ -927,6 +933,39 @@ def parse_location_string(loc: str) -> Tuple[str, str]:
             if cand:
                 country = "Canada"
                 state = cand
+                break
+
+    # Last-resort substring scan for free-text locations like
+    # "Greater New York City Area" or "San Francisco Bay Area, USA"
+    if not country:
+        low = s.lower()
+        # Country aliases (longest first to avoid 'us' matching inside 'austin')
+        for alias, canon in sorted(COUNTRY_ALIASES.items(), key=lambda kv: -len(kv[0])):
+            if len(alias) < 4:
+                continue  # avoid short tokens like 'us', 'uk' as substrings
+            if re.search(r"\b" + re.escape(alias) + r"\b", low):
+                country = canon
+                break
+        if not country:
+            for canon in sorted(COUNTRIES, key=len, reverse=True):
+                if len(canon) < 4:
+                    continue
+                if re.search(r"\b" + re.escape(canon.lower()) + r"\b", low):
+                    country = canon
+                    break
+
+    # If still no country but the string mentions a known US state / CA province as a word
+    if not country:
+        for st_name in US_STATES_FULL:
+            if re.search(r"\b" + re.escape(st_name.lower()) + r"\b", s.lower()):
+                country = "United States"
+                state = st_name
+                break
+    if not country:
+        for prov in CA_PROVINCES_FULL:
+            if re.search(r"\b" + re.escape(prov.lower()) + r"\b", s.lower()):
+                country = "Canada"
+                state = prov
                 break
 
     return country, state
@@ -981,20 +1020,20 @@ def read_uploaded_file(uploaded) -> pd.DataFrame:
 
 
 def strip_ghost_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove unnamed / empty / NaN-header columns."""
+    """Remove ghost columns: anything fully empty. Unnamed columns are KEPT
+    if they hold data (some exports leave headers blank or write placeholders
+    like 'Column9' for valid country/email cells)."""
     drop_cols = []
     for col in df.columns:
-        cname = str(col).strip()
-        if (
-            cname == ""
-            or cname.lower().startswith("unnamed")
-            or cname.lower() == "nan"
-        ):
+        is_empty = df[col].isna().all() or (df[col].astype(str).str.strip() == "").all()
+        if is_empty:
             drop_cols.append(col)
             continue
-        # Drop columns that are entirely empty
-        if df[col].isna().all() or (df[col].astype(str).str.strip() == "").all():
-            drop_cols.append(col)
+        # If it's an utterly nameless column AND essentially empty header AND looks
+        # like a pandas-generated placeholder, we already kept it above because it
+        # has data. We deliberately do NOT drop populated 'Unnamed: N' / 'ColumnN'
+        # columns — the row-scan fallback in process_dataframe will mine them for
+        # country / state values.
     return df.drop(columns=drop_cols)
 
 
@@ -1024,6 +1063,16 @@ def process_dataframe(
     df.columns = [fix_encoding(str(c)).strip() for c in df.columns]
 
     mapping = build_column_mapping(df)
+
+    # Build the set of source columns we've already mapped to a target field.
+    # The row-scan fallback for country/state uses this to avoid scanning the
+    # email / phone / name / etc. columns for country values (which would risk
+    # false positives), and instead only mines truly unmapped columns
+    # (e.g. 'Column9', 'Column11' from sloppy exports).
+    mapped_source_columns = set()
+    for _tgt, _src in mapping.items():
+        if _src:
+            mapped_source_columns.add(_src)
 
     output_rows: List[Dict] = []
     errors: List[Dict] = []
@@ -1097,6 +1146,40 @@ def process_dataframe(
             if not state and loc_state and country in ("United States", "Canada"):
                 state = loc_state
 
+        # LAST-RESORT FALLBACK: scan every unmapped column in this row for a
+        # value that *exactly* matches a country / US state / CA province.
+        # This rescues sloppy exports where country lives in unnamed columns
+        # like 'Column9' or 'Unnamed: 10' with no recognisable header.
+        if not country or not state:
+            for col in df.columns:
+                if country and state:
+                    break
+                if col in mapped_source_columns:
+                    continue
+                if col not in source_row.index:
+                    continue
+                val = clean_text(source_row[col])
+                if not val or len(val) > 60:
+                    continue
+                if not country:
+                    c_match = normalize_country(val)
+                    if c_match:
+                        country = c_match
+                        continue
+                if not state:
+                    us_match = normalize_us_state(val)
+                    if us_match:
+                        state = us_match
+                        if not country:
+                            country = "United States"
+                        continue
+                    ca_match = normalize_ca_province(val)
+                    if ca_match:
+                        state = ca_match
+                        if not country:
+                            country = "Canada"
+                        continue
+
         # Country may have been pulled but isn't on the canonical list — final guard
         if country and country not in COUNTRIES:
             # If it's actually a US state or CA province name that landed in the
@@ -1148,16 +1231,31 @@ def process_dataframe(
         }
 
         # ----- Row-level validation -----
-        row_label = f"Row {source_row_num}"
-
         # Mandatory checks
         for f in MANDATORY_FIELDS:
             if not out.get(f):
-                errors.append({
-                    "row": source_row_num,
-                    "field": f,
-                    "issue": f"Missing required field → {f}",
-                })
+                # For Country, include diagnostic context so the user can see
+                # which source values we tried and why they didn't resolve.
+                if f == "Country":
+                    diag_bits = []
+                    if country_raw:
+                        diag_bits.append(f"raw country '{country_raw[:40]}' not recognised")
+                    if location_raw:
+                        diag_bits.append(f"location '{location_raw[:60]}' not parseable")
+                    if not country_raw and not location_raw:
+                        diag_bits.append("no Country or Location column detected for this row")
+                    diag = f" — {'; '.join(diag_bits)}" if diag_bits else ""
+                    errors.append({
+                        "row": source_row_num,
+                        "field": f,
+                        "issue": f"Missing required field → Country{diag}",
+                    })
+                else:
+                    errors.append({
+                        "row": source_row_num,
+                        "field": f,
+                        "issue": f"Missing required field → {f}",
+                    })
 
         # Email format
         if email and not validate_email(email):
@@ -1373,11 +1471,13 @@ def render_errors(errors: List[Dict]) -> None:
         return
     st.markdown(
         f'<div class="error-banner">⚠️ {len(errors)} validation issue(s) detected. '
-        f'Review them below — you can still export, but Dynamics may reject affected rows.</div>',
+        f'Row numbers refer to the <strong>source file</strong> '
+        f'(row 1 = headers, row 2 = first data row). '
+        f'You can still export — Dynamics may reject affected rows.</div>',
         unsafe_allow_html=True,
     )
     err_df = pd.DataFrame(errors).sort_values(["row", "field"]).reset_index(drop=True)
-    err_df.columns = ["Row", "Field", "Issue"]
+    err_df.columns = ["Source row", "Field", "Issue"]
     st.dataframe(err_df, use_container_width=True, hide_index=True)
 
 
