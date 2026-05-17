@@ -1,224 +1,39 @@
-import streamlit as st
-import pandas as pd
-import re
-import io
-from datetime import datetime
+"""
+Opal RT Spreadsheet Cleaner
+---------------------------
+Internal tool for converting messy lead spreadsheets into a Dynamics-compatible
+import CSV.
 
-# ─── Page Config ────────────────────────────────────────────────────────────
+Built by Arnaud Joakim <arnaud.joakim@opal-rt.com>
+"""
+
+from __future__ import annotations
+
+import io
+import re
+import unicodedata
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
+
+# ---------------------------------------------------------------------------
+# PAGE CONFIG - must be the first Streamlit call
+# ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="OPAL-RT Spreadsheet Cleaner",
-    page_icon="⚡",
+    page_title="Opal RT Spreadsheet Cleaner",
+    page_icon="🔷",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ─── CSS Styling ─────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+# ===========================================================================
+# CONSTANTS
+# ===========================================================================
 
-  html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-  }
-
-  /* Hero banner */
-  .hero-banner {
-    background: linear-gradient(135deg, #003366 0%, #0055A5 50%, #0077CC 100%);
-    padding: 0;
-    border-radius: 12px;
-    margin-bottom: 28px;
-    overflow: hidden;
-    position: relative;
-    min-height: 160px;
-    display: flex;
-    align-items: center;
-  }
-  .hero-bg {
-    position: absolute; top:0; left:0; width:100%; height:100%;
-    background-image: url('https://www.opal-rt.com/wp-content/uploads/2025/05/Hero-News-OPAL-RT.jpg');
-    background-size: cover;
-    background-position: center;
-    opacity: 0.18;
-  }
-  .hero-content {
-    position: relative; z-index: 1;
-    padding: 32px 40px;
-  }
-  .hero-title {
-    color: #FFFFFF;
-    font-size: 2rem;
-    font-weight: 700;
-    margin: 0 0 6px 0;
-    letter-spacing: -0.5px;
-  }
-  .hero-subtitle {
-    color: #A8CFEE;
-    font-size: 1rem;
-    font-weight: 400;
-    margin: 0;
-  }
-  .hero-badge {
-    display: inline-block;
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 20px;
-    padding: 4px 14px;
-    color: #D0E8FF;
-    font-size: 0.75rem;
-    font-weight: 500;
-    margin-bottom: 10px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-  }
-
-  /* Section cards */
-  .section-card {
-    background: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 10px;
-    padding: 24px 28px;
-    margin-bottom: 20px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-  }
-  .section-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #0055A5;
-    margin-bottom: 16px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #E8F0FA;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  /* Validation boxes */
-  .success-box {
-    background: #F0FDF4;
-    border: 1px solid #86EFAC;
-    border-left: 4px solid #22C55E;
-    border-radius: 8px;
-    padding: 16px 20px;
-    color: #166534;
-    font-weight: 500;
-    margin: 16px 0;
-  }
-  .error-box {
-    background: #FFF1F2;
-    border: 1px solid #FECDD3;
-    border-left: 4px solid #EF4444;
-    border-radius: 8px;
-    padding: 16px 20px;
-    color: #9F1239;
-    margin: 16px 0;
-  }
-  .error-box h4 {
-    margin: 0 0 10px 0;
-    font-size: 0.95rem;
-    font-weight: 600;
-  }
-  .error-item {
-    font-size: 0.85rem;
-    padding: 4px 0;
-    border-bottom: 1px solid rgba(239,68,68,0.1);
-    color: #7F1D1D;
-  }
-  .warning-box {
-    background: #FFFBEB;
-    border: 1px solid #FDE68A;
-    border-left: 4px solid #F59E0B;
-    border-radius: 8px;
-    padding: 14px 18px;
-    color: #78350F;
-    font-size: 0.875rem;
-    margin: 12px 0;
-  }
-
-  /* Mandatory asterisk */
-  .required-star { color: #EF4444; font-weight: 700; }
-
-  /* Stats row */
-  .stats-row {
-    display: flex;
-    gap: 16px;
-    margin: 16px 0;
-    flex-wrap: wrap;
-  }
-  .stat-chip {
-    background: #EFF6FF;
-    border: 1px solid #BFDBFE;
-    border-radius: 8px;
-    padding: 10px 18px;
-    text-align: center;
-    min-width: 110px;
-  }
-  .stat-chip .stat-num {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #1D4ED8;
-    display: block;
-  }
-  .stat-chip .stat-label {
-    font-size: 0.72rem;
-    color: #64748B;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  /* Footer */
-  .footer {
-    text-align: center;
-    padding: 20px;
-    color: #94A3B8;
-    font-size: 0.8rem;
-    border-top: 1px solid #E2E8F0;
-    margin-top: 40px;
-  }
-  .footer a { color: #0055A5; text-decoration: none; }
-  .footer a:hover { text-decoration: underline; }
-
-  /* Override Streamlit button */
-  .stDownloadButton > button {
-    background: linear-gradient(135deg, #0055A5, #0077CC) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 10px 28px !important;
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-    transition: opacity 0.2s !important;
-  }
-  .stDownloadButton > button:hover { opacity: 0.9 !important; }
-
-  div[data-testid="stFileUploader"] {
-    border: 2px dashed #93C5FD;
-    border-radius: 10px;
-    padding: 12px;
-    background: #F8FBFF;
-  }
-
-  /* Tab styling */
-  .stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-    background: #F1F5F9;
-    border-radius: 8px;
-    padding: 4px;
-  }
-  .stTabs [data-baseweb="tab"] {
-    border-radius: 6px;
-    font-weight: 500;
-    color: #475569;
-  }
-  .stTabs [aria-selected="true"] {
-    background: #FFFFFF !important;
-    color: #0055A5 !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  }
-</style>
-""", unsafe_allow_html=True)
-
-# ─── Constants ───────────────────────────────────────────────────────────────
-EXPORT_COLUMNS = [
+# Exact Dynamics export column order (do not change)
+DYNAMICS_COLUMNS: List[str] = [
     "(Do Not Modify) Lead",
     "(Do Not Modify) Row Checksum",
     "(Do Not Modify) Modified On",
@@ -242,16 +57,46 @@ EXPORT_COLUMNS = [
     "Allow Marketing Communication",
 ]
 
-MANDATORY_FIELDS = ["Subject", "First Name", "Last Name", "Email", "Company Name", "Country"]
+MANDATORY_FIELDS: List[str] = [
+    "Subject",
+    "First Name",
+    "Last Name",
+    "Email",
+    "Company Name",
+    "Country",
+]
 
-LEAD_SOURCE_VALUES = ["", "Shows", "Web", "Prospection", "Webinar", "Referral",
-                      "Social Media", "Customer Portal", "SPS", "Others"]
+FIELD_MAX_LENGTHS: Dict[str, int] = {
+    "First Name": 58,
+    "Last Name": 50,
+    "Company Name": 100,
+    "Job Title": 100,
+    "Email": 100,
+    "LinkedIn": 500,
+    "Description": 2000,
+    "Subject": 300,
+    "Business Phone": 50,
+}
 
-RATING_VALUES = ["", "Cold", "Warm", "Hot"]
+# Dropdown options (exact values from ImportLeadTemplate.xlsm)
+LEAD_SOURCE_OPTIONS = [
+    "",
+    "Shows",
+    "Web",
+    "Prospection",
+    "Webinar",
+    "Referral",
+    "Social Media",
+    "Customer Portal",
+    "SPS",
+    "Others",
+]
 
-ALLOW_MARKETING_VALUES = ["", "Yes", "No"]
+RATING_OPTIONS = ["", "Cold", "Warm", "Hot"]
 
-INDUSTRY_SECTOR_VALUES = [
+ALLOW_MARKETING_OPTIONS = ["", "Yes", "No"]
+
+INDUSTRY_SECTOR_OPTIONS = [
     "",
     "Academic - Research or Post-graduate",
     "Academic - Undergraduate",
@@ -264,7 +109,7 @@ INDUSTRY_SECTOR_VALUES = [
     "Stock - Inventory",
 ]
 
-MARKET_SEGMENT_VALUES = [
+MARKET_SEGMENT_OPTIONS = [
     "",
     "Aerospace",
     "Automotive",
@@ -273,7 +118,7 @@ MARKET_SEGMENT_VALUES = [
     "Power System",
 ]
 
-MAIN_APPLICATION_MAP = {
+MAIN_APPLICATION_BY_SEGMENT: Dict[str, List[str]] = {
     "": [""],
     "Aerospace": [
         "",
@@ -329,636 +174,1329 @@ MAIN_APPLICATION_MAP = {
     ],
 }
 
-FIELD_MAX_LENGTHS = {
-    "First Name": 58,
-    "Last Name": 50,
-    "Company Name": 100,
-    "Job Title": 100,
-    "Email": 100,
-    "LinkedIn": 500,
-    "Description": 2000,
-    "Subject": 300,
-    "Business Phone": 50,
-}
+# Canonical Dynamics countries (244 - exact list from template)
+COUNTRIES: List[str] = [
+    "Afghanistan", "African Country (non-maghrebian)", "Aland Island", "Albania",
+    "Algeria", "American Samoa", "Andorra", "Angola", "Anguilla", "Antartica",
+    "Antigua and Barbuda", "Argentina", "Armenia", "Aruba", "Australia", "Austria",
+    "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus",
+    "Belgium", "Belize", "Benin", "Bermuda", "Bhutan", "Bolivia",
+    "Bosnia and Herzegovina", "Botswana", "Bouvet Island", "Brazil",
+    "British Indian Ocean Territory", "Brunei Darussalam", "Bulgaria",
+    "Burkina Faso", "Burundi", "Cambodia", "Cameroon", "Canada", "Cape Verde",
+    "Cayman Islands", "Central African Republic", "Chad", "Chile", "China",
+    "Chrismas Island", "Cocos (Keeling) Islands", "Colombia", "Comoros", "Congo",
+    "Congo, The democatic Republic of the", "Cook Islands", "Costa Rica",
+    "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti",
+    "Dominica", "Dominican Republic", "Egypt", "El Salvador", "Ecuador",
+    "Equatorial Guinea", "Eritrea", "Estonia", "Ethiopia",
+    "Falkland Islands (Malvinas)", "Faroe Island", "Fiji", "Finland", "France",
+    "French Guiana", "French Polynesia", "French Southern Territories",
+    "French-Guadeloupe", "French-Martinique", "Gabon", "Gambia", "Georgia",
+    "Germany", "Ghana", "Gibraltar", "Greece", "Greenland", "Grenada", "Guam",
+    "Guatemala", "Guernser", "Guinea", "Guinea-Bissau", "Guyana", "Haiti",
+    "Heard Island and McDonals Islands", "Honduras", "Hong Kong", "Hungary",
+    "Iceland", "India", "Indonesia", "Iran (Islamic Republic of)", "Iraq",
+    "Ireland", "Isle of Man", "Israel", "Italy", "Ivory Coast", "Jamaica",
+    "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan",
+    "Lakshadweep", "Lao People's Democratic republic", "Latvia", "Lebanon",
+    "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+    "Macao", "Macedonia", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali",
+    "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mayotte", "Mexico",
+    "Micronesia, Federated States of", "Moldova", "Monaco", "Mongolia",
+    "Montenegro", "Montserrat", "Morocco", "Mozambique", "Myanmar", "N/A",
+    "Namibia", "Nepal", "Netherlands", "Netherlands Antilles", "New Caledonia",
+    "New Zealand", "Nicaragua", "Niger", "Nigeria", "Niue", "Norfolk Iskand",
+    "Northern Mariana Islands", "Norway", "Oman", "Pakistan", "Palau",
+    "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines",
+    "Pitcairn", "Poland", "Portugal", "Puerto Rico", "Qatar", "Reunion",
+    "Romania", "Russia", "Rwanda", "Saint Barthelemy", "Saint Helena",
+    "Saint Kitts and Nevis", "Saint Lucia", "Saint Pierre and Miquelon",
+    "Saint Vincent and the Grenadines", "Samoa", "San Marino",
+    "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles",
+    "Shanghai", "Sierra Leone", "Singapore", "Slovakia", "Slovenia",
+    "Solomon Islands", "Somalia", "South Africa",
+    "South Georgia and the South Sandwich Islands", "South Korea", "Spain",
+    "Sri Lanka", "St Martin", "Sudan", "Suriname", "Svalbard and Jan Mayen",
+    "Swaziland", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan",
+    "Tanzania", "Thailand", "Timor-Leste", "Togo", "Trinidad and Tobago",
+    "Tunisia", "Turkey", "Turkmenistan", "Turks and Caicos Island", "Tuvalu",
+    "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom",
+    "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City State",
+    "Venezuela", "Vietnam", "Virgin Islands, British", "Virgin Islands, U.S.",
+    "Wallis and Futuna", "Western Sahara", "Yemen", "Zambia", "Zimbabwe",
+]
 
-# ─── US States & Canadian Provinces ─────────────────────────────────────────
-US_STATES = {
-    "alabama": "Alabama", "alaska": "Alaska", "arizona": "Arizona", "arkansas": "Arkansas",
-    "california": "California", "colorado": "Colorado", "connecticut": "Connecticut",
-    "delaware": "Delaware", "florida": "Florida", "georgia": "Georgia", "hawaii": "Hawaii",
-    "idaho": "Idaho", "illinois": "Illinois", "indiana": "Indiana", "iowa": "Iowa",
-    "kansas": "Kansas", "kentucky": "Kentucky", "louisiana": "Louisiana", "maine": "Maine",
-    "maryland": "Maryland", "massachusetts": "Massachusetts", "michigan": "Michigan",
-    "minnesota": "Minnesota", "mississippi": "Mississippi", "missouri": "Missouri",
-    "montana": "Montana", "nebraska": "Nebraska", "nevada": "Nevada",
-    "new hampshire": "New Hampshire", "new jersey": "New Jersey", "new mexico": "New Mexico",
-    "new york": "New York", "north carolina": "North Carolina", "north dakota": "North Dakota",
-    "ohio": "Ohio", "oklahoma": "Oklahoma", "oregon": "Oregon", "pennsylvania": "Pennsylvania",
-    "rhode island": "Rhode Island", "south carolina": "South Carolina",
-    "south dakota": "South Dakota", "tennessee": "Tennessee", "texas": "Texas",
-    "utah": "Utah", "vermont": "Vermont", "virginia": "Virginia", "washington": "Washington",
-    "west virginia": "West Virginia", "wisconsin": "Wisconsin", "wyoming": "Wyoming",
-    "district of columbia": "District of Columbia", "dc": "District of Columbia",
-}
-
-CA_PROVINCES = {
-    "alberta": "Alberta", "british columbia": "British Columbia", "manitoba": "Manitoba",
-    "new brunswick": "New Brunswick", "newfoundland": "Newfoundland and Labrador",
-    "newfoundland and labrador": "Newfoundland and Labrador",
-    "northwest territories": "Northwest Territories", "nova scotia": "Nova Scotia",
-    "nunavut": "Nunavut", "ontario": "Ontario", "prince edward island": "Prince Edward Island",
-    "quebec": "Quebec", "québec": "Quebec", "saskatchewan": "Saskatchewan", "yukon": "Yukon",
-    "qc": "Quebec", "on": "Ontario", "bc": "British Columbia", "ab": "Alberta",
-}
-
-# Common country name normalizations
-COUNTRY_ALIASES = {
-    "usa": "United States", "us": "United States", "u.s.": "United States",
-    "u.s.a.": "United States", "united states of america": "United States",
-    "uk": "United Kingdom", "u.k.": "United Kingdom", "great britain": "United Kingdom",
+# Common country aliases → canonical name (lowercase keys)
+COUNTRY_ALIASES: Dict[str, str] = {
+    "usa": "United States",
+    "u.s.a.": "United States",
+    "u.s.a": "United States",
+    "us": "United States",
+    "u.s.": "United States",
+    "u.s": "United States",
+    "united states of america": "United States",
+    "united states": "United States",
+    "america": "United States",
+    "uk": "United Kingdom",
+    "u.k.": "United Kingdom",
+    "u.k": "United Kingdom",
+    "great britain": "United Kingdom",
+    "britain": "United Kingdom",
     "england": "United Kingdom",
-    "ca": "Canada", "can": "Canada",
-    "fr": "France",
-    "de": "Germany",
-    "jp": "Japan",
-    "cn": "China",
-    "au": "Australia",
-    "br": "Brazil",
-    "in": "India",
-    "mx": "Mexico",
-    "kr": "South Korea",
-    "se": "Sweden",
-    "no": "Norway",
-    "fi": "Finland",
-    "dk": "Denmark",
-    "nl": "Netherlands",
-    "be": "Belgium",
-    "ch": "Switzerland",
-    "at": "Austria",
-    "es": "Spain",
-    "it": "Italy",
-    "pt": "Portugal",
-    "pl": "Poland",
-    "cz": "Czech Republic",
-    "ro": "Romania",
-    "hu": "Hungary",
-    "gr": "Greece",
-    "tr": "Turkey",
-    "sa": "Saudi Arabia",
-    "ae": "United Arab Emirates",
+    "scotland": "United Kingdom",
+    "wales": "United Kingdom",
+    "northern ireland": "United Kingdom",
     "uae": "United Arab Emirates",
-    "sg": "Singapore",
+    "u.a.e.": "United Arab Emirates",
+    "u.a.e": "United Arab Emirates",
+    "russian federation": "Russia",
+    "russia": "Russia",
+    "south korea": "South Korea",
+    "korea, republic of": "South Korea",
+    "republic of korea": "South Korea",
+    "korea (south)": "South Korea",
+    "rok": "South Korea",
+    "viet nam": "Vietnam",
+    "vietnam": "Vietnam",
+    "ivory coast": "Ivory Coast",
+    "côte d'ivoire": "Ivory Coast",
+    "cote d'ivoire": "Ivory Coast",
+    "czech republic": "Czech Republic",
+    "czechia": "Czech Republic",
+    "hong kong sar": "Hong Kong",
     "hk": "Hong Kong",
-    "tw": "Taiwan",
-    "nz": "New Zealand",
-    "za": "South Africa",
-    "il": "Israel",
-    "ir": "Iran",
-    "pk": "Pakistan",
-    "eg": "Egypt",
-    "ng": "Nigeria",
-    "ke": "Kenya",
-    "th": "Thailand",
-    "vn": "Vietnam",
-    "id": "Indonesia",
-    "my": "Malaysia",
-    "ph": "Philippines",
-    "ar": "Argentina",
-    "cl": "Chile",
-    "co": "Colombia",
-    "pe": "Peru",
+    "taiwan, province of china": "Taiwan",
+    "republic of china": "Taiwan",
+    "iran": "Iran (Islamic Republic of)",
+    "islamic republic of iran": "Iran (Islamic Republic of)",
+    "laos": "Lao People's Democratic republic",
+    "macau": "Macao",
+    "syrian arab republic": "Syria",
+    "republic of moldova": "Moldova",
+    "bolivia, plurinational state of": "Bolivia",
+    "venezuela, bolivarian republic of": "Venezuela",
+    "tanzania, united republic of": "Tanzania",
+    "north macedonia": "Macedonia",
+    "republic of north macedonia": "Macedonia",
+    "swaziland": "Swaziland",
+    "eswatini": "Swaziland",
+    "myanmar (burma)": "Myanmar",
+    "burma": "Myanmar",
+    "the netherlands": "Netherlands",
+    "holland": "Netherlands",
+    "deutschland": "Germany",
+    "espana": "Spain",
+    "españa": "Spain",
+    "italia": "Italy",
+    "brasil": "Brazil",
+    "republic of singapore": "Singapore",
+    "kingdom of saudi arabia": "Saudi Arabia",
+    "ksa": "Saudi Arabia",
+    "people's republic of china": "China",
+    "prc": "China",
+    "mainland china": "China",
 }
 
-# ─── Helper Functions ─────────────────────────────────────────────────────────
-def normalize_col(col_name):
-    """Lowercase, strip, collapse spaces for fuzzy matching."""
-    if not col_name or not isinstance(col_name, str):
+# US states (with abbreviations)
+US_STATES_FULL: List[str] = [
+    "Alabama", "Alaska", "American Samoa", "Arizona", "Arkansas", "California",
+    "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida",
+    "Georgia", "Guam", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
+    "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
+    "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
+    "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York",
+    "North Carolina", "North Dakota", "Northern Mariana Islands", "Ohio",
+    "Oklahoma", "Oregon", "Pennsylvania", "Puerto Rico", "Rhode Island",
+    "South Carolina", "South Dakota", "Tennessee", "Texas",
+    "United States Minor Outlying Islands", "Utah", "Vermont",
+    "Virgin Islands, U.S.", "Virginia", "Washington", "West Virginia",
+    "Wisconsin", "Wyoming",
+]
+
+US_STATE_ABBR: Dict[str, str] = {
+    "al": "Alabama", "ak": "Alaska", "as": "American Samoa", "az": "Arizona",
+    "ar": "Arkansas", "ca": "California", "co": "Colorado", "ct": "Connecticut",
+    "de": "Delaware", "dc": "District of Columbia", "fl": "Florida",
+    "ga": "Georgia", "gu": "Guam", "hi": "Hawaii", "id": "Idaho",
+    "il": "Illinois", "in": "Indiana", "ia": "Iowa", "ks": "Kansas",
+    "ky": "Kentucky", "la": "Louisiana", "me": "Maine", "md": "Maryland",
+    "ma": "Massachusetts", "mi": "Michigan", "mn": "Minnesota",
+    "ms": "Mississippi", "mo": "Missouri", "mt": "Montana", "ne": "Nebraska",
+    "nv": "Nevada", "nh": "New Hampshire", "nj": "New Jersey",
+    "nm": "New Mexico", "ny": "New York", "nc": "North Carolina",
+    "nd": "North Dakota", "mp": "Northern Mariana Islands", "oh": "Ohio",
+    "ok": "Oklahoma", "or": "Oregon", "pa": "Pennsylvania", "pr": "Puerto Rico",
+    "ri": "Rhode Island", "sc": "South Carolina", "sd": "South Dakota",
+    "tn": "Tennessee", "tx": "Texas", "ut": "Utah", "vt": "Vermont",
+    "vi": "Virgin Islands, U.S.", "va": "Virginia", "wa": "Washington",
+    "wv": "West Virginia", "wi": "Wisconsin", "wy": "Wyoming",
+}
+
+# Canadian provinces (with abbreviations) - using template's spelling (Québec)
+CA_PROVINCES_FULL: List[str] = [
+    "Alberta", "British Columbia", "Manitoba", "New Brunswick",
+    "Newfoundland and Labrador", "Northwest Territories", "Nova Scotia",
+    "Nunavut", "Ontario", "Prince Edward Island", "Québec", "Saskatchewan",
+    "Yukon Territory",
+]
+
+CA_PROVINCE_ABBR: Dict[str, str] = {
+    "ab": "Alberta", "bc": "British Columbia", "mb": "Manitoba",
+    "nb": "New Brunswick", "nl": "Newfoundland and Labrador",
+    "nt": "Northwest Territories", "ns": "Nova Scotia", "nu": "Nunavut",
+    "on": "Ontario", "pe": "Prince Edward Island", "pei": "Prince Edward Island",
+    "qc": "Québec", "que": "Québec", "quebec": "Québec",
+    "sk": "Saskatchewan", "yt": "Yukon Territory", "yk": "Yukon Territory",
+}
+
+# Source-column detection rules. Order matters for tie-breaking (specific first).
+COLUMN_ALIASES: Dict[str, List[str]] = {
+    "First Name": [
+        "first name", "firstname", "first_name", "fname", "given name",
+        "given_name", "givenname", "first", "prenom", "prénom", "nom prenom",
+    ],
+    "Last Name": [
+        "last name", "lastname", "last_name", "lname", "surname",
+        "family name", "family_name", "familyname", "last", "nom de famille",
+    ],
+    "Company Name": [
+        "company name", "company", "companyname", "company_name", "organization",
+        "organisation", "org", "employer", "business name", "account", "firm",
+        "entreprise", "société", "societe",
+    ],
+    "Job Title": [
+        "job title", "jobtitle", "job_title", "title", "position", "role",
+        "job role", "designation", "fonction", "poste",
+    ],
+    "Email": [
+        "email", "e-mail", "email address", "emailaddress", "email_address",
+        "work email", "business email", "corporate email", "professional email",
+        "primary email", "mail", "courriel", "adresse email",
+    ],
+    "Business Phone": [
+        "business phone", "businessphone", "business_phone", "work phone",
+        "workphone", "work_phone", "office phone", "company phone",
+        "mobile phone", "mobilephone", "mobile_phone", "mobile", "cell",
+        "cell phone", "cellphone", "phone", "telephone", "tel", "phone number",
+        "contact number", "phone no", "primary phone", "téléphone",
+    ],
+    "LinkedIn": [
+        "linkedin", "linkedin profile", "linkedin profile url",
+        "linkedin url", "linkedin link", "linkedinprofile", "linkedin_profile",
+        "linkedin profile name", "li profile", "li url",
+    ],
+    "Country": [
+        "country", "country/region", "country region", "country_region",
+        "nation", "pays",
+    ],
+    "State or Province": [
+        "state or province", "state/province", "state province", "state",
+        "province", "region", "state_province", "stateprovince",
+    ],
+    "Description": [
+        "description", "notes", "note", "comments", "comment", "remarks",
+        "details", "about",
+    ],
+}
+
+# "Location" gets a separate slot because it's parsed differently
+LOCATION_ALIASES: List[str] = [
+    "location", "city", "addresse", "address", "city/state", "city, state",
+    "geography", "geo", "city and country",
+]
+
+EMAIL_REGEX = re.compile(
+    r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
+)
+
+# Brand palette
+BRAND = {
+    "navy": "#002F6C",
+    "navy_dark": "#001A3F",
+    "accent": "#0099D8",
+    "accent_dark": "#007BB0",
+    "bg": "#F4F6F9",
+    "card": "#FFFFFF",
+    "text": "#1A1A1A",
+    "text_muted": "#5A6473",
+    "border": "#E1E6EE",
+    "success_bg": "#E8F6EC",
+    "success_border": "#2E7D32",
+    "error_bg": "#FDECEC",
+    "error_border": "#C62828",
+}
+
+# ===========================================================================
+# CUSTOM CSS / BRANDING
+# ===========================================================================
+
+CUSTOM_CSS = f"""
+<style>
+    /* ------- Base ------- */
+    .stApp {{
+        background: {BRAND['bg']};
+    }}
+    .block-container {{
+        padding-top: 0rem !important;
+        padding-bottom: 3rem !important;
+        max-width: 1200px;
+    }}
+    /* Hide Streamlit chrome we don't need */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header[data-testid="stHeader"] {{
+        background: transparent;
+    }}
+
+    /* ------- Typography ------- */
+    html, body, [class*="css"] {{
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+        color: {BRAND['text']};
+    }}
+
+    /* ------- Hero ------- */
+    .hero {{
+        position: relative;
+        width: 100%;
+        min-height: 220px;
+        border-radius: 16px;
+        overflow: hidden;
+        margin-top: 1rem;
+        margin-bottom: 1.5rem;
+        background:
+            linear-gradient(120deg, rgba(0,26,63,0.85) 0%, rgba(0,47,108,0.65) 50%, rgba(0,153,216,0.45) 100%),
+            url("https://www.opal-rt.com/wp-content/uploads/2025/05/Hero-News-OPAL-RT.jpg") center/cover no-repeat,
+            linear-gradient(120deg, {BRAND['navy_dark']} 0%, {BRAND['navy']} 50%, {BRAND['accent']} 100%);
+        color: white;
+        padding: 2.25rem 2rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-shadow: 0 10px 30px rgba(0, 47, 108, 0.18);
+    }}
+    .hero-eyebrow {{
+        font-size: 0.75rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        opacity: 0.85;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }}
+    .hero-title {{
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+    }}
+    .hero-subtitle {{
+        font-size: 1.05rem;
+        margin-top: 0.6rem;
+        opacity: 0.95;
+        max-width: 720px;
+        line-height: 1.5;
+    }}
+    @media (max-width: 640px) {{
+        .hero {{ padding: 1.5rem 1.25rem; min-height: 180px; border-radius: 12px; }}
+        .hero-title {{ font-size: 1.5rem; }}
+        .hero-subtitle {{ font-size: 0.95rem; }}
+    }}
+
+    /* ------- Section cards ------- */
+    .section-card {{
+        background: {BRAND['card']};
+        border: 1px solid {BRAND['border']};
+        border-radius: 14px;
+        padding: 1.5rem 1.5rem 1.25rem;
+        margin-bottom: 1.25rem;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    }}
+    .section-card h3 {{
+        margin: 0 0 0.25rem 0;
+        font-size: 1.15rem;
+        color: {BRAND['navy']};
+        font-weight: 700;
+    }}
+    .section-card .section-hint {{
+        font-size: 0.85rem;
+        color: {BRAND['text_muted']};
+        margin-bottom: 1rem;
+    }}
+    .req-asterisk {{
+        color: {BRAND['accent']};
+        font-weight: 700;
+        margin-left: 2px;
+    }}
+
+    /* ------- Streamlit widgets ------- */
+    /* Buttons */
+    .stButton > button {{
+        background: linear-gradient(180deg, {BRAND['accent']} 0%, {BRAND['accent_dark']} 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.6rem 1.25rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        box-shadow: 0 2px 6px rgba(0, 153, 216, 0.25);
+        transition: transform 0.04s ease, box-shadow 0.15s ease, filter 0.15s ease;
+        width: 100%;
+    }}
+    .stButton > button:hover {{
+        filter: brightness(1.05);
+        box-shadow: 0 4px 14px rgba(0, 153, 216, 0.35);
+    }}
+    .stButton > button:active {{
+        transform: translateY(1px);
+    }}
+    /* Download button (secondary look – navy) */
+    .stDownloadButton > button {{
+        background: linear-gradient(180deg, {BRAND['navy']} 0%, {BRAND['navy_dark']} 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.7rem 1.25rem;
+        font-weight: 600;
+        font-size: 1rem;
+        width: 100%;
+        box-shadow: 0 2px 6px rgba(0, 47, 108, 0.25);
+    }}
+    .stDownloadButton > button:hover {{
+        filter: brightness(1.1);
+    }}
+
+    /* File uploader */
+    [data-testid="stFileUploader"] section {{
+        border: 2px dashed {BRAND['accent']};
+        background: rgba(0, 153, 216, 0.04);
+        border-radius: 12px;
+        padding: 1rem;
+    }}
+    [data-testid="stFileUploader"] section:hover {{
+        background: rgba(0, 153, 216, 0.08);
+    }}
+
+    /* Inputs / selects */
+    .stTextInput input, .stTextArea textarea {{
+        border-radius: 8px !important;
+        border-color: {BRAND['border']} !important;
+    }}
+    .stTextInput input:focus, .stTextArea textarea:focus {{
+        border-color: {BRAND['accent']} !important;
+        box-shadow: 0 0 0 1px {BRAND['accent']} !important;
+    }}
+    /* Selectbox styling – keep the native dropdown chrome but tone the border */
+    div[data-baseweb="select"] > div {{
+        border-radius: 8px !important;
+        border-color: {BRAND['border']} !important;
+    }}
+
+    /* Tables */
+    .stDataFrame {{
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid {BRAND['border']};
+    }}
+
+    /* Custom status banners */
+    .success-banner {{
+        background: {BRAND['success_bg']};
+        border-left: 5px solid {BRAND['success_border']};
+        color: #1B5E20;
+        padding: 1rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 600;
+        margin: 0.5rem 0 1rem 0;
+    }}
+    .error-banner {{
+        background: {BRAND['error_bg']};
+        border-left: 5px solid {BRAND['error_border']};
+        color: #8B0000;
+        padding: 1rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 600;
+        margin: 0.5rem 0 1rem 0;
+    }}
+    .stats-row {{
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin: 0.5rem 0 1.25rem 0;
+    }}
+    .stat-pill {{
+        background: white;
+        border: 1px solid {BRAND['border']};
+        border-radius: 10px;
+        padding: 0.65rem 1rem;
+        min-width: 120px;
+        flex: 1 1 120px;
+    }}
+    .stat-pill .stat-label {{
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: {BRAND['text_muted']};
+        font-weight: 600;
+    }}
+    .stat-pill .stat-value {{
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: {BRAND['navy']};
+        margin-top: 0.15rem;
+    }}
+
+    /* Mapping list */
+    .mapping-grid {{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.4rem;
+        font-size: 0.9rem;
+    }}
+    @media (min-width: 720px) {{
+        .mapping-grid {{ grid-template-columns: 1fr 1fr; }}
+    }}
+    .mapping-row {{
+        background: #F8FAFC;
+        border: 1px solid {BRAND['border']};
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }}
+    .mapping-arrow {{ color: {BRAND['accent']}; font-weight: 700; }}
+    .mapping-source {{ color: {BRAND['text_muted']}; }}
+    .mapping-target {{ color: {BRAND['navy']}; font-weight: 600; }}
+    .mapping-missing {{ color: #B26A00; font-style: italic; }}
+
+    /* Footer */
+    .footer {{
+        text-align: center;
+        margin-top: 2.5rem;
+        padding: 1.25rem;
+        color: {BRAND['text_muted']};
+        font-size: 0.85rem;
+        border-top: 1px solid {BRAND['border']};
+    }}
+    .footer a {{
+        color: {BRAND['accent']};
+        text-decoration: none;
+        font-weight: 600;
+    }}
+    .footer a:hover {{ text-decoration: underline; }}
+
+    /* Make columns stack on small screens */
+    @media (max-width: 640px) {{
+        [data-testid="column"] {{
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }}
+    }}
+</style>
+"""
+
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# ===========================================================================
+# HELPER FUNCTIONS
+# ===========================================================================
+
+def fix_encoding(value) -> str:
+    """Repair common mojibake (UTF-8 decoded as Latin-1) and strip junk chars."""
+    if value is None:
         return ""
-    return re.sub(r'\s+', ' ', col_name.lower().strip())
+    if not isinstance(value, str):
+        value = str(value)
+
+    s = value
+
+    # Try the classic latin1→utf8 roundtrip if we see telltale "Ã" patterns
+    if "Ã" in s or "Â" in s:
+        try:
+            fixed = s.encode("latin-1", errors="strict").decode("utf-8", errors="strict")
+            # Only accept the fix if it removed the suspicious sequences
+            if ("Ã" in s and "Ã" not in fixed) or ("Â" in s and "Â" not in fixed):
+                s = fixed
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+
+    # Hand-roll fallback for the most common Latin-letter mojibake patterns
+    # that survive the roundtrip. Smart-quote / dash patterns are handled by
+    # the encode/decode attempt above (we skip them here to keep the literals
+    # plain ASCII-safe).
+    mojibake_map = {
+        "Ã©": "é", "Ã¨": "è", "Ãª": "ê", "Ã«": "ë",
+        "Ã ": "à", "Ã¢": "â", "Ã¤": "ä", "Ã¡": "á", "Ã£": "ã",
+        "Ã®": "î", "Ã¯": "ï", "Ã­": "í",
+        "Ã´": "ô", "Ã¶": "ö", "Ã²": "ò", "Ã³": "ó",
+        "Ã»": "û", "Ã¼": "ü", "Ã¹": "ù", "Ãº": "ú",
+        "Ã±": "ñ", "Ã§": "ç", "Ã¿": "ÿ",
+        "Ã‰": "É", "Ãˆ": "È", "ÃŠ": "Ê",
+        "Ã€": "À", "Ã‚": "Â",
+        "Ã\u201d": "Ô", "Ã™": "Ù", "Ã›": "Û",
+        "Ã‡": "Ç", "Ã\u2018": "Ñ",
+    }
+    for bad, good in mojibake_map.items():
+        if bad in s:
+            s = s.replace(bad, good)
+
+    # Strip replacement characters & zero-width junk
+    s = s.replace("\ufffd", "")  # U+FFFD replacement
+    s = s.replace("\u200b", "")  # zero-width space
+    s = s.replace("\ufeff", "")  # BOM
+    s = s.replace("\u00a0", " ")  # NBSP → space
+
+    # Normalise unicode (combining accents → composed)
+    s = unicodedata.normalize("NFC", s)
+    return s
 
 
-def detect_column(df_cols, patterns):
-    """Find the first column matching any pattern (fuzzy)."""
-    normalized = {normalize_col(c): c for c in df_cols}
-    for pat in patterns:
-        pat_n = normalize_col(pat)
-        if pat_n in normalized:
-            return normalized[pat_n]
-    # Partial match fallback
-    for pat in patterns:
-        pat_n = normalize_col(pat)
-        for nc, orig in normalized.items():
-            if pat_n in nc or nc in pat_n:
-                return orig
+def clean_text(value, lowercase: bool = False) -> str:
+    """Trim, collapse whitespace, fix encoding."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = fix_encoding(str(value))
+    s = re.sub(r"\s+", " ", s).strip()
+    if lowercase:
+        s = s.lower()
+    return s
+
+
+def normalize_header(name: str) -> str:
+    """Normalize a column header for fuzzy matching."""
+    if name is None:
+        return ""
+    s = fix_encoding(str(name)).lower().strip()
+    # Drop non-alphanumerics for comparison
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+
+def detect_source_column(
+    source_columns: List[str], target_field: str
+) -> Optional[str]:
+    """Find the best matching source column for a Dynamics target field."""
+    aliases = COLUMN_ALIASES.get(target_field, [])
+    normalized_sources = {normalize_header(c): c for c in source_columns}
+
+    # 1) exact normalized match
+    for alias in aliases:
+        key = normalize_header(alias)
+        if key in normalized_sources:
+            return normalized_sources[key]
+
+    # 2) contains match (alias as substring of source column)
+    for alias in aliases:
+        key = normalize_header(alias)
+        if not key:
+            continue
+        for norm_src, orig_src in normalized_sources.items():
+            if key == norm_src or key in norm_src:
+                return orig_src
+
     return None
 
 
-COLUMN_PATTERNS = {
-    "First Name":       ["first name", "firstname", "fname", "given name", "prénom", "prenom", "first"],
-    "Last Name":        ["last name", "lastname", "lname", "surname", "family name", "nom", "last"],
-    "Company Name":     ["company name", "company", "organization", "organisation", "org", "employer",
-                         "account name", "firm", "société", "societe"],
-    "Job Title":        ["job title", "title", "position", "role", "function", "fonction",
-                         "designation", "poste", "jobtitle"],
-    "Email":            ["work email", "email address", "business email", "corporate email",
-                         "email", "e-mail", "courriel", "mail"],
-    "Business Phone":   ["mobile phone", "work phone", "business phone", "phone number",
-                         "telephone", "phone", "mobile", "tel", "téléphone"],
-    "Country":          ["country/region", "country", "pays", "nation"],
-    "State or Province":["state/province", "state or province", "province", "state", "région", "region"],
-    "LinkedIn":         ["linkedin profile url", "linkedin profile", "linkedin url",
-                         "linkedin", "linked in"],
-    "Location":         ["location", "city/state/country", "city, state", "address", "localisation"],
-}
+def detect_location_column(source_columns: List[str]) -> Optional[str]:
+    """Locate a 'Location'-style column for parsing."""
+    normalized_sources = {normalize_header(c): c for c in source_columns}
+    for alias in LOCATION_ALIASES:
+        key = normalize_header(alias)
+        if key in normalized_sources:
+            return normalized_sources[key]
+    # also accept things containing 'location'
+    for norm_src, orig_src in normalized_sources.items():
+        if "location" in norm_src:
+            return orig_src
+    return None
 
 
-def parse_location(location_str):
-    """
-    Parse a freeform location string into (country, state_province).
-    Handles formats like:
-      Montreal, Quebec, Canada
-      Dallas, Texas, United States
-      Paris, France
-      London, United Kingdom
-      São Paulo, SP, Brazil
-    """
-    if not location_str or not isinstance(location_str, str):
+def normalize_country(raw: str) -> str:
+    """Return canonical country name (from COUNTRIES list) or '' if unrecognised."""
+    if not raw:
+        return ""
+    s = clean_text(raw)
+    if not s:
+        return ""
+    low = s.lower().strip(" .,")
+    # Direct alias hit
+    if low in COUNTRY_ALIASES:
+        return COUNTRY_ALIASES[low]
+    # Case-insensitive direct match against canonical list
+    for c in COUNTRIES:
+        if c.lower() == low:
+            return c
+    # Try stripping common prefixes ("the ")
+    if low.startswith("the "):
+        return normalize_country(low[4:])
+    return ""
+
+
+def normalize_us_state(raw: str) -> str:
+    """Return canonical US state name or '' if not a recognised US state."""
+    if not raw:
+        return ""
+    s = clean_text(raw).strip(" .,")
+    if not s:
+        return ""
+    low = s.lower()
+    # Abbreviation (e.g. 'ca', 'n.y.')
+    abbr_key = re.sub(r"[^a-z]", "", low)
+    if abbr_key in US_STATE_ABBR:
+        return US_STATE_ABBR[abbr_key]
+    # Full name (case-insensitive)
+    for st_name in US_STATES_FULL:
+        if st_name.lower() == low:
+            return st_name
+    return ""
+
+
+def normalize_ca_province(raw: str) -> str:
+    """Return canonical Canadian province (with template spelling) or ''."""
+    if not raw:
+        return ""
+    s = clean_text(raw).strip(" .,")
+    if not s:
+        return ""
+    low = s.lower()
+    abbr_key = re.sub(r"[^a-z]", "", low)
+    if abbr_key in CA_PROVINCE_ABBR:
+        return CA_PROVINCE_ABBR[abbr_key]
+    for prov in CA_PROVINCES_FULL:
+        if prov.lower() == low:
+            return prov
+    # Also accept 'Quebec' without accent
+    if low == "quebec":
+        return "Québec"
+    return ""
+
+
+def parse_location_string(loc: str) -> Tuple[str, str]:
+    """Parse a free-text location into (country, state_or_province).
+    Only US/Canada keep a state/province. Other countries return ('Country', '').
+    Returns ('', '') if unable to determine confidently."""
+    if not loc:
+        return "", ""
+    s = clean_text(loc)
+    if not s:
         return "", ""
 
-    parts = [p.strip() for p in location_str.split(",") if p.strip()]
+    # Split on commas (and clean parts)
+    parts = [p.strip() for p in s.split(",") if p.strip()]
+
     if not parts:
         return "", ""
 
+    # Try identifying a country anywhere in the parts (rightmost first)
     country = ""
-    state_province = ""
-
-    # Try to identify country from last part
-    last = parts[-1].lower().strip()
-    if last in COUNTRY_ALIASES:
-        country = COUNTRY_ALIASES[last]
-    else:
-        # Title-case it as a country
-        country = parts[-1].strip().title()
-
-    # Now look for state/province in remaining parts
-    if len(parts) >= 3:
-        candidate = parts[-2].lower().strip()
-        if candidate in US_STATES:
-            state_province = US_STATES[candidate]
-        elif candidate in CA_PROVINCES:
-            state_province = CA_PROVINCES[candidate]
-        else:
-            # Check if it looks like a known state/province abbreviation
-            if len(candidate) == 2 and candidate in (set(US_STATES) | set(CA_PROVINCES)):
-                state_province = US_STATES.get(candidate) or CA_PROVINCES.get(candidate, "")
-            else:
-                state_province = parts[-2].strip()
-    elif len(parts) == 2:
-        # Could be "City, Country" — no state info
-        candidate = parts[0].lower().strip()
-        if candidate in US_STATES:
-            state_province = US_STATES[candidate]
-            country = country  # already set
-        elif candidate in CA_PROVINCES:
-            state_province = CA_PROVINCES[candidate]
-        # else: first part is just city, no state
-
-    return country, state_province
-
-
-def normalize_country(val):
-    """Normalize a country field value."""
-    if not val or not isinstance(val, str):
-        return ""
-    v = val.strip()
-    key = v.lower()
-    if key in COUNTRY_ALIASES:
-        return COUNTRY_ALIASES[key]
-    return v.strip()
-
-
-def normalize_state(val):
-    if not val or not isinstance(val, str):
-        return ""
-    v = val.strip().lower()
-    if v in US_STATES:
-        return US_STATES[v]
-    if v in CA_PROVINCES:
-        return CA_PROVINCES[v]
-    return val.strip()
-
-
-def clean_text(val):
-    if val is None or (isinstance(val, float) and pd.isna(val)):
-        return ""
-    s = str(val).strip()
-    s = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', s)
-    s = re.sub(r' +', ' ', s)
-    return s.strip()
-
-
-def clean_email(val):
-    v = clean_text(val).lower()
-    return v
-
-
-def validate_email(email):
-    if not email:
-        return False
-    pattern = r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
-    return bool(re.match(pattern, email))
-
-
-def process_dataframe(df_raw, global_settings, column_map):
-    """
-    Main processing pipeline:
-    1. Map source columns to Dynamics columns
-    2. Clean & normalize
-    3. Apply global settings
-    4. Return (clean_df, errors_list)
-    """
-    errors = []
-    rows = []
-
-    # Remove fully-empty rows
-    df_raw = df_raw.dropna(how='all')
-    # Remove duplicate emails (keep first)
-    email_col_src = column_map.get("Email")
-    if email_col_src and email_col_src in df_raw.columns:
-        df_raw = df_raw.drop_duplicates(subset=[email_col_src], keep='first')
-
-    location_col = None
-    for c in df_raw.columns:
-        if normalize_col(c) in ["location", "city/state/country", "city, state",
-                                 "localisation", "address", "location/country"]:
-            location_col = c
+    country_idx = -1
+    for i in range(len(parts) - 1, -1, -1):
+        c = normalize_country(parts[i])
+        if c:
+            country = c
+            country_idx = i
             break
 
-    for idx, row in df_raw.iterrows():
-        row_num = idx + 2  # human-readable (1-indexed + header)
-        rec = {col: "" for col in EXPORT_COLUMNS}
-        row_errors = []
+    state = ""
 
-        # ── Map columns ──────────────────────────────────────────────────
-        for dyn_col, src_col in column_map.items():
-            if src_col and src_col in df_raw.columns:
-                val = clean_text(row.get(src_col, ""))
-                if dyn_col == "Email":
-                    val = clean_email(row.get(src_col, ""))
-                elif dyn_col == "Country":
-                    val = normalize_country(val)
-                elif dyn_col == "State or Province":
-                    val = normalize_state(val)
-                rec[dyn_col] = val
+    if country == "United States":
+        # Look for a US state in parts before the country position (or anywhere)
+        search_range = parts[:country_idx] if country_idx >= 0 else parts
+        for i in range(len(search_range) - 1, -1, -1):
+            cand = normalize_us_state(search_range[i])
+            if cand:
+                state = cand
+                break
+    elif country == "Canada":
+        search_range = parts[:country_idx] if country_idx >= 0 else parts
+        for i in range(len(search_range) - 1, -1, -1):
+            cand = normalize_ca_province(search_range[i])
+            if cand:
+                state = cand
+                break
 
-        # ── Parse Location field ─────────────────────────────────────────
-        if location_col and location_col in df_raw.columns:
-            loc_val = clean_text(row.get(location_col, ""))
-            if loc_val:
-                parsed_country, parsed_state = parse_location(loc_val)
-                # Only fill if not already populated from dedicated columns
-                if not rec.get("Country") and parsed_country:
-                    rec["Country"] = parsed_country
-                if not rec.get("State or Province") and parsed_state:
-                    rec["State or Province"] = parsed_state
+    # If no country found, try inferring from a US state or CA province
+    if not country:
+        for i in range(len(parts) - 1, -1, -1):
+            cand = normalize_us_state(parts[i])
+            if cand:
+                country = "United States"
+                state = cand
+                break
+            cand = normalize_ca_province(parts[i])
+            if cand:
+                country = "Canada"
+                state = cand
+                break
 
-        # ── Apply global settings (only if row doesn't already have value) ──
-        for field, value in global_settings.items():
-            if value:  # Only apply non-empty global settings
-                if field in ("Market Segment", "Main Application", "Industry Sector",
-                             "Lead Source", "Rating", "Allow Marketing Communication",
-                             "Source Campaign", "Description"):
-                    if not rec.get(field):
-                        rec[field] = value
-                elif field == "Subject":
-                    rec[field] = value  # Subject always from global
-
-        # ── Validations ──────────────────────────────────────────────────
-        email_val = rec.get("Email", "")
-        if email_val and not validate_email(email_val):
-            row_errors.append(f"Row {row_num}: Invalid email → {email_val}")
-
-        for mf in MANDATORY_FIELDS:
-            if not rec.get(mf, "").strip():
-                row_errors.append(f"Row {row_num}: Missing required field → {mf}")
-
-        for field, max_len in FIELD_MAX_LENGTHS.items():
-            val = rec.get(field, "")
-            if val and len(val) > max_len:
-                row_errors.append(
-                    f"Row {row_num}: {field} exceeds {max_len} characters (has {len(val)})"
-                )
-                rec[field] = val[:max_len]
-
-        errors.extend(row_errors)
-        rows.append(rec)
-
-    result_df = pd.DataFrame(rows, columns=EXPORT_COLUMNS)
-    return result_df, errors
+    return country, state
 
 
-def detect_columns(df):
-    """Auto-detect source columns for each Dynamics field."""
-    mapping = {}
-    for dyn_col, patterns in COLUMN_PATTERNS.items():
-        if dyn_col == "Location":
+def validate_email(email: str) -> bool:
+    if not email:
+        return False
+    return bool(EMAIL_REGEX.match(email))
+
+
+def default_subject() -> str:
+    """Default 'YYYYMMProspection' subject for the current month."""
+    return datetime.now().strftime("%Y%m") + "Prospection"
+
+
+def truncate_to(value: str, max_len: int) -> str:
+    """Currently we DO NOT truncate – we surface a validation error instead.
+    This helper exists in case future config wants to enable truncation."""
+    return value if len(value) <= max_len else value[:max_len]
+
+
+# ===========================================================================
+# CORE PIPELINE
+# ===========================================================================
+
+def read_uploaded_file(uploaded) -> pd.DataFrame:
+    """Read a CSV or Excel file uploaded via Streamlit into a pandas DataFrame."""
+    name = uploaded.name.lower()
+    raw = uploaded.read()
+    bio = io.BytesIO(raw)
+
+    if name.endswith((".xlsx", ".xlsm", ".xls")):
+        # openpyxl is the supported engine
+        engine = "openpyxl"
+        df = pd.read_excel(bio, engine=engine, dtype=str)
+    elif name.endswith(".csv"):
+        # Try a couple of encodings (UTF-8 first, then cp1252 for legacy exports)
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                bio.seek(0)
+                df = pd.read_csv(bio, dtype=str, encoding=enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise ValueError("Could not decode the CSV file with common encodings.")
+    else:
+        raise ValueError("Unsupported file format. Please upload .csv or .xlsx.")
+
+    return df
+
+
+def strip_ghost_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove unnamed / empty / NaN-header columns."""
+    drop_cols = []
+    for col in df.columns:
+        cname = str(col).strip()
+        if (
+            cname == ""
+            or cname.lower().startswith("unnamed")
+            or cname.lower() == "nan"
+        ):
+            drop_cols.append(col)
             continue
-        found = detect_column(df.columns.tolist(), patterns)
-        mapping[dyn_col] = found
+        # Drop columns that are entirely empty
+        if df[col].isna().all() or (df[col].astype(str).str.strip() == "").all():
+            drop_cols.append(col)
+    return df.drop(columns=drop_cols)
+
+
+def build_column_mapping(df: pd.DataFrame) -> Dict[str, Optional[str]]:
+    """Map Dynamics target fields → source column names found in df."""
+    cols = list(df.columns)
+    mapping: Dict[str, Optional[str]] = {}
+    for target in COLUMN_ALIASES.keys():
+        mapping[target] = detect_source_column(cols, target)
+    mapping["__location__"] = detect_location_column(cols)
     return mapping
 
 
-# ─── Hero Banner ─────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="hero-banner">
-  <div class="hero-bg"></div>
-  <div class="hero-content">
-    <div class="hero-badge">⚡ OPAL-RT Internal Tool</div>
-    <h1 class="hero-title">OPAL-RT Spreadsheet Cleaner</h1>
-    <p class="hero-subtitle">Prepare CRM-ready lead imports for Microsoft Dynamics</p>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+def process_dataframe(
+    raw_df: pd.DataFrame,
+    settings: Dict[str, str],
+) -> Tuple[pd.DataFrame, List[Dict], Dict[str, Optional[str]], Dict[str, int]]:
+    """Main pipeline. Returns:
+        - output_df: ready-to-export DataFrame in DYNAMICS_COLUMNS order
+        - errors: list of {row, field, issue} dicts
+        - mapping: detected column mapping for transparency
+        - stats: counts of rows in / out / dropped"""
 
-# ─── Tabs ─────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["📤 Upload & Configure", "🗺️ Column Mapping", "✅ Validate & Export"])
+    df = strip_ghost_columns(raw_df.copy())
 
-# ─── Session State ────────────────────────────────────────────────────────────
-if "df_raw" not in st.session_state:
-    st.session_state.df_raw = None
-if "column_map" not in st.session_state:
-    st.session_state.column_map = {}
-if "processed_df" not in st.session_state:
-    st.session_state.processed_df = None
-if "errors" not in st.session_state:
-    st.session_state.errors = []
+    # Normalize header strings (preserve original for display but trim)
+    df.columns = [fix_encoding(str(c)).strip() for c in df.columns]
 
-# ─── Tab 1: Upload & Global Settings ────────────────────────────────────────
-with tab1:
-    col_upload, col_settings = st.columns([1, 1], gap="large")
+    mapping = build_column_mapping(df)
 
-    with col_upload:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.markdown('<div class="section-title">📁 Upload Source File</div>', unsafe_allow_html=True)
-        uploaded = st.file_uploader(
-            "Upload CSV or Excel File",
-            type=["csv", "xlsx"],
-            help="Accepted formats: .csv, .xlsx",
-            label_visibility="collapsed"
-        )
-        if uploaded:
-            try:
-                if uploaded.name.endswith(".csv"):
-                    df_raw = pd.read_csv(uploaded, dtype=str)
-                else:
-                    df_raw = pd.read_excel(uploaded, dtype=str)
+    output_rows: List[Dict] = []
+    errors: List[Dict] = []
+    seen_emails: Dict[str, int] = {}
 
-                # Remove unnamed / ghost columns
-                df_raw = df_raw.loc[:, ~df_raw.columns.str.match(r'^Unnamed')]
-                df_raw = df_raw.loc[:, df_raw.columns.notna()]
-                df_raw = df_raw.loc[:, df_raw.columns.astype(str).str.strip() != ""]
-                df_raw.columns = [str(c).strip() for c in df_raw.columns]
+    stats = {
+        "rows_in": len(df),
+        "rows_out": 0,
+        "rows_skipped_no_email": 0,
+        "rows_duplicate_email": 0,
+    }
 
-                st.session_state.df_raw = df_raw
-                auto_map = detect_columns(df_raw)
-                st.session_state.column_map = auto_map
+    for idx, source_row in df.iterrows():
+        # Source-spreadsheet row number for user-facing messages (header = row 1)
+        source_row_num = int(idx) + 2
 
-                st.markdown(f"""
-                <div class="stats-row">
-                  <div class="stat-chip">
-                    <span class="stat-num">{len(df_raw)}</span>
-                    <span class="stat-label">Total Rows</span>
-                  </div>
-                  <div class="stat-chip">
-                    <span class="stat-num">{len(df_raw.columns)}</span>
-                    <span class="stat-label">Columns Found</span>
-                  </div>
-                  <div class="stat-chip">
-                    <span class="stat-num">{sum(1 for v in auto_map.values() if v)}</span>
-                    <span class="stat-label">Auto-Mapped</span>
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
+        def pull(target: str) -> str:
+            src_col = mapping.get(target)
+            if src_col is None or src_col not in df.columns:
+                return ""
+            return clean_text(source_row[src_col])
 
-                st.markdown("**Detected source columns:**")
-                cols_preview = list(df_raw.columns[:20])
-                st.code(", ".join(cols_preview) + ("..." if len(df_raw.columns) > 20 else ""))
+        # --- pull each field ---
+        first_name = pull("First Name")
+        last_name = pull("Last Name")
+        company = pull("Company Name")
+        job_title = pull("Job Title")
+        email = pull("Email").lower()
+        phone = pull("Business Phone")
+        linkedin = pull("LinkedIn")
+        description = pull("Description")
+        country_raw = pull("Country")
+        state_raw = pull("State or Province")
+        location_raw = ""
+        loc_col = mapping.get("__location__")
+        if loc_col and loc_col in df.columns:
+            location_raw = clean_text(source_row[loc_col])
 
-            except Exception as e:
-                st.error(f"Error reading file: {e}")
-        else:
-            st.markdown("""
-            <div class="warning-box">
-            📂 No file uploaded yet. Drag & drop or click to browse for a <strong>.csv</strong> or <strong>.xlsx</strong> file.
-            </div>
-            """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # --- skip rows with no email entirely (per spec addendum) ---
+        if not email:
+            stats["rows_skipped_no_email"] += 1
+            continue
 
-    with col_settings:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.markdown('<div class="section-title">⚙️ Global Import Settings <span style="font-size:0.75rem;color:#64748B;font-weight:400;">(applied to all rows)</span></div>', unsafe_allow_html=True)
+        # --- de-duplicate by email (case-insensitive) ---
+        if email in seen_emails:
+            stats["rows_duplicate_email"] += 1
+            continue
+        seen_emails[email] = source_row_num
 
-        default_subject = datetime.now().strftime("%Y%m") + "Prospection"
+        # --- resolve Country & State/Province ---
+        country = normalize_country(country_raw) if country_raw else ""
+        state = ""
+        # Only treat State/Province as valid for US / Canada
+        if state_raw:
+            us_candidate = normalize_us_state(state_raw)
+            ca_candidate = normalize_ca_province(state_raw)
+            if us_candidate:
+                state = us_candidate
+                if not country:
+                    country = "United States"
+            elif ca_candidate:
+                state = ca_candidate
+                if not country:
+                    country = "Canada"
 
-        st.markdown('<span class="required-star">*</span> Subject', unsafe_allow_html=True)
-        gs_subject = st.text_input("Subject", value=default_subject, label_visibility="collapsed", key="gs_subject")
+        # If still missing, try the Location column
+        if (not country or not state) and location_raw:
+            loc_country, loc_state = parse_location_string(location_raw)
+            if not country and loc_country:
+                country = loc_country
+            if not state and loc_state and country in ("United States", "Canada"):
+                state = loc_state
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            gs_lead_source = st.selectbox("Lead Source", LEAD_SOURCE_VALUES, key="gs_lead_source")
-            gs_rating = st.selectbox("Rating", RATING_VALUES, key="gs_rating")
-            gs_allow_marketing = st.selectbox("Allow Marketing Communication",
-                                              ALLOW_MARKETING_VALUES, key="gs_allow_marketing")
-            gs_industry = st.selectbox("Industry Sector", INDUSTRY_SECTOR_VALUES, key="gs_industry")
-        with col_b:
-            gs_campaign = st.text_input("Source Campaign", key="gs_campaign")
-            gs_market_segment = st.selectbox("Market Segment", MARKET_SEGMENT_VALUES, key="gs_market_segment")
-            gs_main_app = st.selectbox(
-                "Main Application",
-                MAIN_APPLICATION_MAP.get(st.session_state.get("gs_market_segment", ""), [""]),
-                key="gs_main_app"
-            )
-            gs_description = st.text_area("Description", height=68, key="gs_description")
+        # Country may have been pulled but isn't on the canonical list — final guard
+        if country and country not in COUNTRIES:
+            # If it's actually a US state or CA province name that landed in the
+            # country slot, recover gracefully
+            recovered_state = normalize_us_state(country) or normalize_ca_province(country)
+            if normalize_us_state(country):
+                country, state = "United States", normalize_us_state(country)
+            elif normalize_ca_province(country):
+                country, state = "Canada", normalize_ca_province(country)
+            else:
+                country = ""
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        # State only applies to US/Canada
+        if country not in ("United States", "Canada"):
+            state = ""
 
-# ─── Tab 2: Column Mapping ────────────────────────────────────────────────────
-with tab2:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">🗺️ Source → Dynamics Column Mapping</div>', unsafe_allow_html=True)
+        # --- Marketing/segment/sector: only fill from explicit user override or
+        #     a direct source-file match (we have no source aliases for those,
+        #     so they stay blank unless the user picked them in global settings)
+        market_segment = settings.get("market_segment", "") or ""
+        main_application = settings.get("main_application", "") or ""
+        industry_sector = settings.get("industry_sector", "") or ""
 
-    if st.session_state.df_raw is None:
-        st.markdown("""
-        <div class="warning-box">⬆️ Please upload a file in the <strong>Upload & Configure</strong> tab first.</div>
-        """, unsafe_allow_html=True)
-    else:
-        df = st.session_state.df_raw
-        source_cols = ["(not mapped)"] + list(df.columns)
+        # --- Subject (mandatory, from global settings) ---
+        subject = settings.get("subject", "").strip() or default_subject()
 
-        st.markdown("""
-        <div class="warning-box">
-        ✨ Auto-detection has pre-filled these mappings. Review and adjust as needed.
-        <strong>Location</strong> fields are automatically parsed into Country and State/Province.
+        out = {
+            "(Do Not Modify) Lead": "",
+            "(Do Not Modify) Row Checksum": "",
+            "(Do Not Modify) Modified On": "",
+            "Subject": subject,
+            "First Name": first_name,
+            "Last Name": last_name,
+            "Job Title": job_title,
+            "Company Name": company,
+            "Email": email,
+            "Business Phone": phone,
+            "Country": country,
+            "State or Province": state,
+            "Description": description or settings.get("description", ""),
+            "Lead Source": settings.get("lead_source", ""),
+            "Rating": settings.get("rating", ""),
+            "Source Campaign": settings.get("source_campaign", ""),
+            "Market Segment": market_segment,
+            "Main Application": main_application,
+            "Industry Sector": industry_sector,
+            "LinkedIn": linkedin,
+            "Allow Marketing Communication": settings.get("allow_marketing", ""),
+        }
+
+        # ----- Row-level validation -----
+        row_label = f"Row {source_row_num}"
+
+        # Mandatory checks
+        for f in MANDATORY_FIELDS:
+            if not out.get(f):
+                errors.append({
+                    "row": source_row_num,
+                    "field": f,
+                    "issue": f"Missing required field → {f}",
+                })
+
+        # Email format
+        if email and not validate_email(email):
+            errors.append({
+                "row": source_row_num,
+                "field": "Email",
+                "issue": f"Invalid email → {email}",
+            })
+
+        # Length validation (errors only — we do not silently truncate)
+        for f, max_len in FIELD_MAX_LENGTHS.items():
+            val = out.get(f, "")
+            if val and len(val) > max_len:
+                errors.append({
+                    "row": source_row_num,
+                    "field": f,
+                    "issue": f"{f} exceeds {max_len} characters ({len(val)})",
+                })
+
+        output_rows.append(out)
+
+    output_df = pd.DataFrame(output_rows, columns=DYNAMICS_COLUMNS)
+    stats["rows_out"] = len(output_df)
+    return output_df, errors, mapping, stats
+
+
+def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    """Serialize DataFrame to UTF-8 (BOM) CSV bytes matching Dynamics expectations."""
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, encoding="utf-8")
+    # utf-8-sig BOM helps Excel/Dynamics correctly detect encoding
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+# ===========================================================================
+# UI
+# ===========================================================================
+
+def render_hero() -> None:
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-eyebrow">OPAL-RT • Internal Tool</div>
+            <h1 class="hero-title">Opal RT Spreadsheet Cleaner</h1>
+            <p class="hero-subtitle">
+                Prepare CRM-ready lead imports for Microsoft Dynamics.
+                Auto-detect columns, normalize data, validate every row,
+                and export a clean import-ready file in seconds.
+            </p>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
-        updated_map = {}
-        dynamics_fields = [
-            "First Name", "Last Name", "Company Name", "Job Title",
-            "Email", "Business Phone", "Country", "State or Province",
-            "LinkedIn", "Location",
-        ]
 
-        mandatory_set = {"First Name", "Last Name", "Company Name", "Email", "Country"}
-        cols_left, cols_right = st.columns(2)
+def render_footer() -> None:
+    st.markdown(
+        """
+        <div class="footer">
+            Built by <strong>Arnaud Joakim</strong> ·
+            <a href="mailto:arnaud.joakim@opal-rt.com">arnaud.joakim@opal-rt.com</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        for i, dyn_field in enumerate(dynamics_fields):
-            current = st.session_state.column_map.get(dyn_field, None)
-            default_idx = 0
-            if current and current in source_cols:
-                default_idx = source_cols.index(current)
 
-            star = " *" if dyn_field in mandatory_set else ""
-            label = f"{dyn_field}{star}"
+def render_global_settings() -> Dict[str, str]:
+    """Render the 'Global Import Settings' section and return the chosen values."""
+    st.markdown(
+        '<div class="section-card">'
+        '<h3>① Global Import Settings</h3>'
+        '<div class="section-hint">These values are applied to <strong>every row</strong> of the export. '
+        'Fields marked with <span class="req-asterisk">*</span> are required by Dynamics.</div>',
+        unsafe_allow_html=True,
+    )
 
-            if i % 2 == 0:
-                with cols_left:
-                    sel = st.selectbox(label, source_cols, index=default_idx, key=f"map_{dyn_field}")
-            else:
-                with cols_right:
-                    sel = st.selectbox(label, source_cols, index=default_idx, key=f"map_{dyn_field}")
+    col1, col2 = st.columns(2)
+    with col1:
+        subject = st.text_input(
+            "Subject *",
+            value=default_subject(),
+            max_chars=300,
+            help="Default format: YYYYMMProspection (e.g. 202605Prospection)",
+        )
+        lead_source = st.selectbox("Lead Source", options=LEAD_SOURCE_OPTIONS, index=0)
+        rating = st.selectbox("Rating", options=RATING_OPTIONS, index=0)
+        allow_marketing = st.selectbox(
+            "Allow Marketing Communication",
+            options=ALLOW_MARKETING_OPTIONS,
+            index=0,
+        )
+        source_campaign = st.text_input(
+            "Source Campaign",
+            value="",
+            help="Free-text campaign identifier (optional)",
+        )
 
-            updated_map[dyn_field] = None if sel == "(not mapped)" else sel
+    with col2:
+        market_segment = st.selectbox(
+            "Market Segment",
+            options=MARKET_SEGMENT_OPTIONS,
+            index=0,
+            key="market_segment_select",
+        )
+        # Main Application options are dependent on Market Segment selection
+        main_app_options = MAIN_APPLICATION_BY_SEGMENT.get(market_segment, [""])
+        main_application = st.selectbox(
+            "Main Application",
+            options=main_app_options,
+            index=0,
+            key="main_application_select",
+            help="Options change based on Market Segment selection",
+        )
+        industry_sector = st.selectbox(
+            "Industry Sector",
+            options=INDUSTRY_SECTOR_OPTIONS,
+            index=0,
+        )
+        description = st.text_area(
+            "Description",
+            value="",
+            height=98,
+            help="Optional default description applied when source row has none",
+        )
 
-        if st.button("💾 Save Mapping", type="primary"):
-            st.session_state.column_map = updated_map
-            st.success("Column mapping saved!")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        # Preview
-        st.markdown("---")
-        st.markdown("**Preview of first 5 rows from source file:**")
-        st.dataframe(df.head(5), use_container_width=True)
+    return {
+        "subject": subject.strip(),
+        "lead_source": lead_source,
+        "rating": rating,
+        "allow_marketing": allow_marketing,
+        "source_campaign": source_campaign.strip(),
+        "market_segment": market_segment,
+        "main_application": main_application,
+        "industry_sector": industry_sector,
+        "description": description.strip(),
+    }
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── Tab 3: Validate & Export ─────────────────────────────────────────────────
-with tab3:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">✅ Validate & Export</div>', unsafe_allow_html=True)
-
-    if st.session_state.df_raw is None:
-        st.markdown("""
-        <div class="warning-box">⬆️ Please upload a file in the <strong>Upload & Configure</strong> tab first.</div>
-        """, unsafe_allow_html=True)
-    else:
-        if st.button("🔄 Run Validation & Build Export", type="primary", use_container_width=True):
-            # Collect global settings
-            seg = st.session_state.get("gs_market_segment", "")
-            main_app_options = MAIN_APPLICATION_MAP.get(seg, [""])
-            raw_main_app = st.session_state.get("gs_main_app", "")
-            main_app_val = raw_main_app if raw_main_app in main_app_options else ""
-
-            global_settings = {
-                "Subject": st.session_state.get("gs_subject", default_subject),
-                "Lead Source": st.session_state.get("gs_lead_source", ""),
-                "Rating": st.session_state.get("gs_rating", ""),
-                "Allow Marketing Communication": st.session_state.get("gs_allow_marketing", ""),
-                "Market Segment": seg,
-                "Main Application": main_app_val,
-                "Industry Sector": st.session_state.get("gs_industry", ""),
-                "Source Campaign": st.session_state.get("gs_campaign", ""),
-                "Description": st.session_state.get("gs_description", ""),
-            }
-
-            col_map = {k: v for k, v in st.session_state.column_map.items()
-                       if k != "Location"}
-
-            with st.spinner("Processing rows…"):
-                processed_df, errors = process_dataframe(
-                    st.session_state.df_raw.copy(),
-                    global_settings,
-                    col_map,
+def render_mapping_panel(mapping: Dict[str, Optional[str]]) -> None:
+    """Show which source columns were auto-detected for each Dynamics field."""
+    with st.expander("🔎 View detected column mapping", expanded=False):
+        rows_html = []
+        # Build mapping in display order excluding the Location-internal key
+        for target in COLUMN_ALIASES.keys():
+            src = mapping.get(target)
+            if src:
+                rows_html.append(
+                    f'<div class="mapping-row">'
+                    f'<span class="mapping-source">{src}</span>'
+                    f'<span class="mapping-arrow">→</span>'
+                    f'<span class="mapping-target">{target}</span>'
+                    f'</div>'
                 )
-
-            st.session_state.processed_df = processed_df
-            st.session_state.errors = errors
-            st.rerun()
-
-        if st.session_state.processed_df is not None:
-            processed_df = st.session_state.processed_df
-            errors = st.session_state.errors
-
-            # Stats
-            total = len(processed_df)
-            error_rows = set()
-            for e in errors:
-                m = re.match(r'Row (\d+):', e)
-                if m:
-                    error_rows.add(int(m.group(1)))
-            clean_rows = total - len(error_rows)
-
-            st.markdown(f"""
-            <div class="stats-row">
-              <div class="stat-chip">
-                <span class="stat-num">{total}</span>
-                <span class="stat-label">Total Rows</span>
-              </div>
-              <div class="stat-chip" style="background:#F0FDF4;border-color:#86EFAC;">
-                <span class="stat-num" style="color:#16A34A;">{clean_rows}</span>
-                <span class="stat-label">Clean Rows</span>
-              </div>
-              <div class="stat-chip" style="background:#FFF1F2;border-color:#FECDD3;">
-                <span class="stat-num" style="color:#DC2626;">{len(error_rows)}</span>
-                <span class="stat-label">Rows w/ Issues</span>
-              </div>
-              <div class="stat-chip">
-                <span class="stat-num">{len(errors)}</span>
-                <span class="stat-label">Total Warnings</span>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if not errors:
-                st.markdown("""
-                <div class="success-box">
-                ✅ File successfully normalized and ready for Dynamics import.
-                All mandatory fields are present and all values pass validation.
-                </div>
-                """, unsafe_allow_html=True)
             else:
-                st.markdown(f"""
-                <div class="error-box">
-                  <h4>⚠️ {len(errors)} Validation Issue{"s" if len(errors) != 1 else ""} Found</h4>
-                  {"".join(f'<div class="error-item">• {e}</div>' for e in errors[:50])}
-                  {"<div class='error-item' style='color:#9F1239;font-style:italic;'>...and more. Fix source file and re-run.</div>" if len(errors) > 50 else ""}
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Preview export
-            st.markdown("---")
-            st.markdown("**Preview of export (first 5 rows):**")
-            st.dataframe(processed_df.head(5), use_container_width=True)
-
-            # Export
-            csv_buffer = io.StringIO()
-            processed_df.to_csv(csv_buffer, index=False, encoding="utf-8")
-            csv_bytes = csv_buffer.getvalue().encode("utf-8")
-
-            st.download_button(
-                label="⬇️ Download opalrt_dynamics_import.csv",
-                data=csv_bytes,
-                file_name="opalrt_dynamics_import.csv",
-                mime="text/csv",
-                use_container_width=True,
+                rows_html.append(
+                    f'<div class="mapping-row">'
+                    f'<span class="mapping-missing">— not found —</span>'
+                    f'<span class="mapping-arrow">→</span>'
+                    f'<span class="mapping-target">{target}</span>'
+                    f'</div>'
+                )
+        loc = mapping.get("__location__")
+        if loc:
+            rows_html.append(
+                f'<div class="mapping-row">'
+                f'<span class="mapping-source">{loc}</span>'
+                f'<span class="mapping-arrow">→</span>'
+                f'<span class="mapping-target">Country + State/Province (parsed)</span>'
+                f'</div>'
             )
+        st.markdown(
+            f'<div class="mapping-grid">{"".join(rows_html)}</div>',
+            unsafe_allow_html=True,
+        )
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── Footer ───────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="footer">
-  Built by <strong>Arnaud Joakim</strong> &nbsp;·&nbsp;
-  <a href="mailto:arnaud.joakim@opal-rt.com">arnaud.joakim@opal-rt.com</a>
-  &nbsp;·&nbsp; OPAL-RT Technologies © 2025
-</div>
-""", unsafe_allow_html=True)
+def render_stats(stats: Dict[str, int], n_errors: int) -> None:
+    st.markdown(
+        f"""
+        <div class="stats-row">
+            <div class="stat-pill">
+                <div class="stat-label">Rows in source</div>
+                <div class="stat-value">{stats['rows_in']}</div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-label">Rows exported</div>
+                <div class="stat-value">{stats['rows_out']}</div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-label">Skipped (no email)</div>
+                <div class="stat-value">{stats['rows_skipped_no_email']}</div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-label">Duplicates removed</div>
+                <div class="stat-value">{stats['rows_duplicate_email']}</div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-label">Validation issues</div>
+                <div class="stat-value">{n_errors}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_errors(errors: List[Dict]) -> None:
+    """Show row-level errors in a tidy red panel."""
+    if not errors:
+        return
+    st.markdown(
+        f'<div class="error-banner">⚠️ {len(errors)} validation issue(s) detected. '
+        f'Review them below — you can still export, but Dynamics may reject affected rows.</div>',
+        unsafe_allow_html=True,
+    )
+    err_df = pd.DataFrame(errors).sort_values(["row", "field"]).reset_index(drop=True)
+    err_df.columns = ["Row", "Field", "Issue"]
+    st.dataframe(err_df, use_container_width=True, hide_index=True)
+
+
+# ===========================================================================
+# MAIN APP
+# ===========================================================================
+
+def main() -> None:
+    render_hero()
+
+    # -------- Global settings panel --------
+    settings = render_global_settings()
+
+    # -------- File upload panel --------
+    st.markdown(
+        '<div class="section-card">'
+        '<h3>② Upload Source File</h3>'
+        '<div class="section-hint">CSV or Excel (.xlsx). The app will auto-detect '
+        'and map columns to the Dynamics template.</div>',
+        unsafe_allow_html=True,
+    )
+    uploaded = st.file_uploader(
+        "Upload CSV or Excel File",
+        type=["csv", "xlsx", "xls"],
+        accept_multiple_files=False,
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if not uploaded:
+        st.info(
+            "📥 Upload a lead spreadsheet above to begin. "
+            "Supported formats: **.csv** and **.xlsx**.",
+            icon="ℹ️",
+        )
+        render_footer()
+        return
+
+    # -------- Process --------
+    st.markdown(
+        '<div class="section-card">'
+        '<h3>③ Normalize & Validate</h3>'
+        '<div class="section-hint">Click below to process the uploaded file. '
+        'The app will clean encoding, normalize formatting, parse locations, '
+        'remove duplicate emails, and validate every row.</div>',
+        unsafe_allow_html=True,
+    )
+    process_clicked = st.button("🚀 Process file", type="primary")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if not process_clicked and "processed" not in st.session_state:
+        render_footer()
+        return
+
+    if process_clicked:
+        try:
+            with st.spinner("Reading file…"):
+                raw_df = read_uploaded_file(uploaded)
+            with st.spinner("Normalizing and validating data…"):
+                output_df, errors, mapping, stats = process_dataframe(raw_df, settings)
+            st.session_state["processed"] = {
+                "output_df": output_df,
+                "errors": errors,
+                "mapping": mapping,
+                "stats": stats,
+                "source_name": uploaded.name,
+            }
+        except Exception as e:  # noqa: BLE001
+            st.markdown(
+                f'<div class="error-banner">❌ Failed to read or process file: {e}</div>',
+                unsafe_allow_html=True,
+            )
+            render_footer()
+            return
+
+    # -------- Results --------
+    state = st.session_state.get("processed")
+    if not state:
+        render_footer()
+        return
+
+    output_df = state["output_df"]
+    errors = state["errors"]
+    mapping = state["mapping"]
+    stats = state["stats"]
+
+    st.markdown(
+        '<div class="section-card">'
+        '<h3>④ Results</h3>',
+        unsafe_allow_html=True,
+    )
+
+    render_stats(stats, len(errors))
+    render_mapping_panel(mapping)
+
+    if not errors:
+        st.markdown(
+            '<div class="success-banner">✅ File successfully normalized and ready for Dynamics import.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        render_errors(errors)
+
+    # Preview
+    st.markdown("**Preview (first 50 rows of the export):**")
+    st.dataframe(output_df.head(50), use_container_width=True, hide_index=True)
+
+    # Download
+    csv_bytes = df_to_csv_bytes(output_df)
+    st.download_button(
+        label="⬇️ Download opalrt_dynamics_import.csv",
+        data=csv_bytes,
+        file_name="opalrt_dynamics_import.csv",
+        mime="text/csv",
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    render_footer()
+
+
+if __name__ == "__main__":
+    main()
