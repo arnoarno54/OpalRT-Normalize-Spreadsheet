@@ -406,6 +406,480 @@ LOCATION_ALIASES: List[str] = [
     "geography", "geo", "city and country",
 ]
 
+# ---------------------------------------------------------------------------
+# City → (Country, State/Province) lookup
+# ---------------------------------------------------------------------------
+# Used as a final fallback in parse_location_string for LinkedIn-style strings
+# like 'Greater Chicago Area', 'Greater Toulouse Metropolitan Area', or just
+# 'Houston'. Keys are LOWERCASE and ASCII-folded (no accents).
+#
+# Rules of curation:
+#   - State/Province only included for US and Canada (matches template).
+#   - Ambiguous city names (Springfield, Cambridge, London-the-CA-city, etc.)
+#     are intentionally OMITTED rather than guessed.
+#   - For mildly ambiguous names (Birmingham, Manchester, Athens), the most
+#     populous / globally-recognised version wins.
+CITY_TO_GEO: Dict[str, Tuple[str, str]] = {
+    # ---------- United States ----------
+    "new york": ("United States", "New York"),
+    "new york city": ("United States", "New York"),
+    "nyc": ("United States", "New York"),
+    "los angeles": ("United States", "California"),
+    "chicago": ("United States", "Illinois"),
+    "houston": ("United States", "Texas"),
+    "phoenix": ("United States", "Arizona"),
+    "philadelphia": ("United States", "Pennsylvania"),
+    "san antonio": ("United States", "Texas"),
+    "san diego": ("United States", "California"),
+    "dallas": ("United States", "Texas"),
+    "fort worth": ("United States", "Texas"),
+    "san jose": ("United States", "California"),
+    "austin": ("United States", "Texas"),
+    "jacksonville": ("United States", "Florida"),
+    "columbus": ("United States", "Ohio"),
+    "charlotte": ("United States", "North Carolina"),
+    "san francisco": ("United States", "California"),
+    "silicon valley": ("United States", "California"),
+    "indianapolis": ("United States", "Indiana"),
+    "seattle": ("United States", "Washington"),
+    "denver": ("United States", "Colorado"),
+    "washington dc": ("United States", "District of Columbia"),
+    "washington d.c.": ("United States", "District of Columbia"),
+    "boston": ("United States", "Massachusetts"),
+    "nashville": ("United States", "Tennessee"),
+    "el paso": ("United States", "Texas"),
+    "detroit": ("United States", "Michigan"),
+    "memphis": ("United States", "Tennessee"),
+    "oklahoma city": ("United States", "Oklahoma"),
+    "las vegas": ("United States", "Nevada"),
+    "louisville": ("United States", "Kentucky"),
+    "baltimore": ("United States", "Maryland"),
+    "milwaukee": ("United States", "Wisconsin"),
+    "albuquerque": ("United States", "New Mexico"),
+    "tucson": ("United States", "Arizona"),
+    "fresno": ("United States", "California"),
+    "sacramento": ("United States", "California"),
+    "atlanta": ("United States", "Georgia"),
+    "kansas city": ("United States", "Missouri"),
+    "colorado springs": ("United States", "Colorado"),
+    "miami": ("United States", "Florida"),
+    "fort lauderdale": ("United States", "Florida"),
+    "raleigh": ("United States", "North Carolina"),
+    "omaha": ("United States", "Nebraska"),
+    "long beach": ("United States", "California"),
+    "virginia beach": ("United States", "Virginia"),
+    "oakland": ("United States", "California"),
+    "minneapolis": ("United States", "Minnesota"),
+    "saint paul": ("United States", "Minnesota"),
+    "st. paul": ("United States", "Minnesota"),
+    "tulsa": ("United States", "Oklahoma"),
+    "tampa": ("United States", "Florida"),
+    "new orleans": ("United States", "Louisiana"),
+    "cleveland": ("United States", "Ohio"),
+    "pittsburgh": ("United States", "Pennsylvania"),
+    "cincinnati": ("United States", "Ohio"),
+    "saint louis": ("United States", "Missouri"),
+    "st. louis": ("United States", "Missouri"),
+    "orlando": ("United States", "Florida"),
+    "salt lake city": ("United States", "Utah"),
+    "buffalo": ("United States", "New York"),
+    "anaheim": ("United States", "California"),
+    "santa ana": ("United States", "California"),
+    "irvine": ("United States", "California"),
+    "berkeley": ("United States", "California"),
+    "palo alto": ("United States", "California"),
+    "mountain view": ("United States", "California"),
+    "sunnyvale": ("United States", "California"),
+    "santa clara": ("United States", "California"),
+    "santa monica": ("United States", "California"),
+    "cupertino": ("United States", "California"),
+    "menlo park": ("United States", "California"),
+    "redwood city": ("United States", "California"),
+    "san mateo": ("United States", "California"),
+    "santa barbara": ("United States", "California"),
+    "burbank": ("United States", "California"),
+    "pasadena": ("United States", "California"),
+    "long island": ("United States", "New York"),
+    "brooklyn": ("United States", "New York"),
+    "queens": ("United States", "New York"),
+    "manhattan": ("United States", "New York"),
+    "bronx": ("United States", "New York"),
+    "newark": ("United States", "New Jersey"),
+    "jersey city": ("United States", "New Jersey"),
+    "trenton": ("United States", "New Jersey"),
+    "princeton": ("United States", "New Jersey"),
+    "stamford": ("United States", "Connecticut"),
+    "hartford": ("United States", "Connecticut"),
+    "providence": ("United States", "Rhode Island"),
+    "annandale": ("United States", "Virginia"),
+    "arlington": ("United States", "Virginia"),
+    "alexandria": ("United States", "Virginia"),
+    "reston": ("United States", "Virginia"),
+    "tysons": ("United States", "Virginia"),
+    "fairfax": ("United States", "Virginia"),
+    "bethesda": ("United States", "Maryland"),
+    "rockville": ("United States", "Maryland"),
+    "annapolis": ("United States", "Maryland"),
+    "silver spring": ("United States", "Maryland"),
+    "ann arbor": ("United States", "Michigan"),
+    "grand rapids": ("United States", "Michigan"),
+    "madison": ("United States", "Wisconsin"),
+    "des moines": ("United States", "Iowa"),
+    "boulder": ("United States", "Colorado"),
+    "boise": ("United States", "Idaho"),
+    "anchorage": ("United States", "Alaska"),
+    "honolulu": ("United States", "Hawaii"),
+    "research triangle": ("United States", "North Carolina"),
+    "durham": ("United States", "North Carolina"),
+    "chapel hill": ("United States", "North Carolina"),
+    "winston-salem": ("United States", "North Carolina"),
+    "asheville": ("United States", "North Carolina"),
+    "savannah": ("United States", "Georgia"),
+    "augusta": ("United States", "Georgia"),
+    "tallahassee": ("United States", "Florida"),
+    "gainesville": ("United States", "Florida"),
+    "boca raton": ("United States", "Florida"),
+    "naples fl": ("United States", "Florida"),
+    "huntsville": ("United States", "Alabama"),
+    "birmingham al": ("United States", "Alabama"),
+
+    # ---------- Canada ----------
+    "toronto": ("Canada", "Ontario"),
+    "greater toronto": ("Canada", "Ontario"),
+    "gta": ("Canada", "Ontario"),
+    "ottawa": ("Canada", "Ontario"),
+    "mississauga": ("Canada", "Ontario"),
+    "brampton": ("Canada", "Ontario"),
+    "markham": ("Canada", "Ontario"),
+    "vaughan": ("Canada", "Ontario"),
+    "kitchener": ("Canada", "Ontario"),
+    "waterloo": ("Canada", "Ontario"),
+    "windsor on": ("Canada", "Ontario"),
+    "montreal": ("Canada", "Québec"),
+    "greater montreal": ("Canada", "Québec"),
+    "laval": ("Canada", "Québec"),
+    "quebec city": ("Canada", "Québec"),
+    "sherbrooke": ("Canada", "Québec"),
+    "trois-rivieres": ("Canada", "Québec"),
+    "gatineau": ("Canada", "Québec"),
+    "vancouver": ("Canada", "British Columbia"),
+    "burnaby": ("Canada", "British Columbia"),
+    "richmond bc": ("Canada", "British Columbia"),
+    "calgary": ("Canada", "Alberta"),
+    "edmonton": ("Canada", "Alberta"),
+    "winnipeg": ("Canada", "Manitoba"),
+    "halifax": ("Canada", "Nova Scotia"),
+    "saskatoon": ("Canada", "Saskatchewan"),
+    "regina": ("Canada", "Saskatchewan"),
+    "st. john's": ("Canada", "Newfoundland and Labrador"),
+    "fredericton": ("Canada", "New Brunswick"),
+    "moncton": ("Canada", "New Brunswick"),
+    "charlottetown": ("Canada", "Prince Edward Island"),
+    "whitehorse": ("Canada", "Yukon Territory"),
+
+    # ---------- United Kingdom ----------
+    "london": ("United Kingdom", ""),
+    "greater london": ("United Kingdom", ""),
+    "manchester": ("United Kingdom", ""),
+    "birmingham": ("United Kingdom", ""),
+    "glasgow": ("United Kingdom", ""),
+    "liverpool": ("United Kingdom", ""),
+    "edinburgh": ("United Kingdom", ""),
+    "bristol": ("United Kingdom", ""),
+    "leeds": ("United Kingdom", ""),
+    "sheffield": ("United Kingdom", ""),
+    "cardiff": ("United Kingdom", ""),
+    "belfast": ("United Kingdom", ""),
+    "newcastle": ("United Kingdom", ""),
+    "nottingham": ("United Kingdom", ""),
+    "southampton": ("United Kingdom", ""),
+    "aberdeen": ("United Kingdom", ""),
+    "oxford": ("United Kingdom", ""),
+    "brighton": ("United Kingdom", ""),
+
+    # ---------- France ----------
+    "paris": ("France", ""),
+    "ile-de-france": ("France", ""),
+    "toulouse": ("France", ""),
+    "lyon": ("France", ""),
+    "marseille": ("France", ""),
+    "bordeaux": ("France", ""),
+    "lille": ("France", ""),
+    "nantes": ("France", ""),
+    "strasbourg": ("France", ""),
+    "rennes": ("France", ""),
+    "grenoble": ("France", ""),
+    "montpellier": ("France", ""),
+    "nice cote d'azur": ("France", ""),
+
+    # ---------- Germany ----------
+    "berlin": ("Germany", ""),
+    "munich": ("Germany", ""),
+    "munchen": ("Germany", ""),
+    "hamburg": ("Germany", ""),
+    "frankfurt": ("Germany", ""),
+    "stuttgart": ("Germany", ""),
+    "cologne": ("Germany", ""),
+    "koln": ("Germany", ""),
+    "dusseldorf": ("Germany", ""),
+    "leipzig": ("Germany", ""),
+    "dresden": ("Germany", ""),
+    "bremen": ("Germany", ""),
+    "hannover": ("Germany", ""),
+    "nuremberg": ("Germany", ""),
+    "nurnberg": ("Germany", ""),
+
+    # ---------- Italy ----------
+    "rome": ("Italy", ""),
+    "roma": ("Italy", ""),
+    "milan": ("Italy", ""),
+    "milano": ("Italy", ""),
+    "naples": ("Italy", ""),
+    "napoli": ("Italy", ""),
+    "turin": ("Italy", ""),
+    "torino": ("Italy", ""),
+    "florence": ("Italy", ""),
+    "firenze": ("Italy", ""),
+    "venice": ("Italy", ""),
+    "venezia": ("Italy", ""),
+    "bologna": ("Italy", ""),
+    "genoa": ("Italy", ""),
+    "genova": ("Italy", ""),
+
+    # ---------- Spain ----------
+    "madrid": ("Spain", ""),
+    "barcelona": ("Spain", ""),
+    "seville": ("Spain", ""),
+    "sevilla": ("Spain", ""),
+    "valencia": ("Spain", ""),
+    "bilbao": ("Spain", ""),
+    "zaragoza": ("Spain", ""),
+    "malaga": ("Spain", ""),
+
+    # ---------- Netherlands / Belgium / Switzerland / Austria ----------
+    "amsterdam": ("Netherlands", ""),
+    "rotterdam": ("Netherlands", ""),
+    "the hague": ("Netherlands", ""),
+    "utrecht": ("Netherlands", ""),
+    "eindhoven": ("Netherlands", ""),
+    "brussels": ("Belgium", ""),
+    "antwerp": ("Belgium", ""),
+    "ghent": ("Belgium", ""),
+    "zurich": ("Switzerland", ""),
+    "geneva": ("Switzerland", ""),
+    "basel": ("Switzerland", ""),
+    "bern": ("Switzerland", ""),
+    "lausanne": ("Switzerland", ""),
+    "vienna": ("Austria", ""),
+    "graz": ("Austria", ""),
+    "salzburg": ("Austria", ""),
+
+    # ---------- Nordics ----------
+    "stockholm": ("Sweden", ""),
+    "gothenburg": ("Sweden", ""),
+    "malmo": ("Sweden", ""),
+    "oslo": ("Norway", ""),
+    "bergen": ("Norway", ""),
+    "copenhagen": ("Denmark", ""),
+    "aarhus": ("Denmark", ""),
+    "helsinki": ("Finland", ""),
+    "tampere": ("Finland", ""),
+    "reykjavik": ("Iceland", ""),
+
+    # ---------- Ireland / Portugal / Greece ----------
+    "dublin": ("Ireland", ""),
+    "cork": ("Ireland", ""),
+    "galway": ("Ireland", ""),
+    "lisbon": ("Portugal", ""),
+    "porto": ("Portugal", ""),
+    "athens": ("Greece", ""),
+    "thessaloniki": ("Greece", ""),
+
+    # ---------- Eastern Europe ----------
+    "warsaw": ("Poland", ""),
+    "krakow": ("Poland", ""),
+    "wroclaw": ("Poland", ""),
+    "poznan": ("Poland", ""),
+    "gdansk": ("Poland", ""),
+    "prague": ("Czech Republic", ""),
+    "praha": ("Czech Republic", ""),
+    "brno": ("Czech Republic", ""),
+    "budapest": ("Hungary", ""),
+    "bucharest": ("Romania", ""),
+    "cluj-napoca": ("Romania", ""),
+    "sofia": ("Bulgaria", ""),
+    "belgrade": ("Serbia", ""),
+    "zagreb": ("Croatia", ""),
+    "ljubljana": ("Slovenia", ""),
+    "bratislava": ("Slovakia", ""),
+    "tallinn": ("Estonia", ""),
+    "riga": ("Latvia", ""),
+    "vilnius": ("Lithuania", ""),
+    "moscow": ("Russia", ""),
+    "saint petersburg": ("Russia", ""),
+    "novosibirsk": ("Russia", ""),
+    "kyiv": ("Ukraine", ""),
+    "kiev": ("Ukraine", ""),
+    "lviv": ("Ukraine", ""),
+    "minsk": ("Belarus", ""),
+
+    # ---------- Middle East ----------
+    "istanbul": ("Turkey", ""),
+    "ankara": ("Turkey", ""),
+    "izmir": ("Turkey", ""),
+    "tel aviv": ("Israel", ""),
+    "jerusalem": ("Israel", ""),
+    "haifa": ("Israel", ""),
+    "dubai": ("United Arab Emirates", ""),
+    "abu dhabi": ("United Arab Emirates", ""),
+    "sharjah": ("United Arab Emirates", ""),
+    "doha": ("Qatar", ""),
+    "riyadh": ("Saudi Arabia", ""),
+    "jeddah": ("Saudi Arabia", ""),
+    "mecca": ("Saudi Arabia", ""),
+    "kuwait city": ("Kuwait", ""),
+    "manama": ("Bahrain", ""),
+    "muscat": ("Oman", ""),
+    "amman": ("Jordan", ""),
+    "beirut": ("Lebanon", ""),
+    "tehran": ("Iran (Islamic Republic of)", ""),
+
+    # ---------- Africa ----------
+    "cairo": ("Egypt", ""),
+    "alexandria eg": ("Egypt", ""),
+    "casablanca": ("Morocco", ""),
+    "rabat": ("Morocco", ""),
+    "marrakech": ("Morocco", ""),
+    "tunis": ("Tunisia", ""),
+    "algiers": ("Algeria", ""),
+    "lagos": ("Nigeria", ""),
+    "abuja": ("Nigeria", ""),
+    "nairobi": ("Kenya", ""),
+    "johannesburg": ("South Africa", ""),
+    "cape town": ("South Africa", ""),
+    "pretoria": ("South Africa", ""),
+    "durban": ("South Africa", ""),
+    "addis ababa": ("Ethiopia", ""),
+    "accra": ("Ghana", ""),
+    "dakar": ("Senegal", ""),
+
+    # ---------- Asia ----------
+    "tokyo": ("Japan", ""),
+    "osaka": ("Japan", ""),
+    "kyoto": ("Japan", ""),
+    "yokohama": ("Japan", ""),
+    "nagoya": ("Japan", ""),
+    "sapporo": ("Japan", ""),
+    "fukuoka": ("Japan", ""),
+    "seoul": ("South Korea", ""),
+    "busan": ("South Korea", ""),
+    "incheon": ("South Korea", ""),
+    "daegu": ("South Korea", ""),
+    "beijing": ("China", ""),
+    "shenzhen": ("China", ""),
+    "guangzhou": ("China", ""),
+    "chengdu": ("China", ""),
+    "hangzhou": ("China", ""),
+    "nanjing": ("China", ""),
+    "xian": ("China", ""),
+    "wuhan": ("China", ""),
+    "tianjin": ("China", ""),
+    "taipei": ("Taiwan", ""),
+    "kaohsiung": ("Taiwan", ""),
+    "taichung": ("Taiwan", ""),
+    "bangkok": ("Thailand", ""),
+    "chiang mai": ("Thailand", ""),
+    "kuala lumpur": ("Malaysia", ""),
+    "penang": ("Malaysia", ""),
+    "jakarta": ("Indonesia", ""),
+    "surabaya": ("Indonesia", ""),
+    "bali": ("Indonesia", ""),
+    "manila": ("Philippines", ""),
+    "cebu": ("Philippines", ""),
+    "ho chi minh city": ("Vietnam", ""),
+    "ho chi minh": ("Vietnam", ""),
+    "hanoi": ("Vietnam", ""),
+    "saigon": ("Vietnam", ""),
+    "phnom penh": ("Cambodia", ""),
+    "yangon": ("Myanmar", ""),
+    "mumbai": ("India", ""),
+    "bombay": ("India", ""),
+    "delhi": ("India", ""),
+    "new delhi": ("India", ""),
+    "national capital region india": ("India", ""),
+    "ncr india": ("India", ""),
+    "bangalore": ("India", ""),
+    "bengaluru": ("India", ""),
+    "hyderabad": ("India", ""),
+    "chennai": ("India", ""),
+    "madras": ("India", ""),
+    "kolkata": ("India", ""),
+    "calcutta": ("India", ""),
+    "pune": ("India", ""),
+    "ahmedabad": ("India", ""),
+    "gurgaon": ("India", ""),
+    "gurugram": ("India", ""),
+    "noida": ("India", ""),
+    "karachi": ("Pakistan", ""),
+    "lahore": ("Pakistan", ""),
+    "islamabad": ("Pakistan", ""),
+    "dhaka": ("Bangladesh", ""),
+    "colombo": ("Sri Lanka", ""),
+    "kathmandu": ("Nepal", ""),
+
+    # ---------- Oceania ----------
+    "sydney": ("Australia", ""),
+    "melbourne": ("Australia", ""),
+    "brisbane": ("Australia", ""),
+    "perth": ("Australia", ""),
+    "adelaide": ("Australia", ""),
+    "canberra": ("Australia", ""),
+    "gold coast": ("Australia", ""),
+    "auckland": ("New Zealand", ""),
+    "wellington": ("New Zealand", ""),
+    "christchurch": ("New Zealand", ""),
+
+    # ---------- Latin America ----------
+    "mexico city": ("Mexico", ""),
+    "guadalajara": ("Mexico", ""),
+    "monterrey": ("Mexico", ""),
+    "puebla": ("Mexico", ""),
+    "tijuana": ("Mexico", ""),
+    "queretaro": ("Mexico", ""),
+    "sao paulo": ("Brazil", ""),
+    "rio de janeiro": ("Brazil", ""),
+    "brasilia": ("Brazil", ""),
+    "belo horizonte": ("Brazil", ""),
+    "porto alegre": ("Brazil", ""),
+    "curitiba": ("Brazil", ""),
+    "salvador": ("Brazil", ""),
+    "recife": ("Brazil", ""),
+    "fortaleza": ("Brazil", ""),
+    "buenos aires": ("Argentina", ""),
+    "cordoba": ("Argentina", ""),
+    "santiago": ("Chile", ""),
+    "valparaiso": ("Chile", ""),
+    "lima": ("Peru", ""),
+    "bogota": ("Colombia", ""),
+    "medellin": ("Colombia", ""),
+    "cali": ("Colombia", ""),
+    "caracas": ("Venezuela", ""),
+    "quito": ("Ecuador", ""),
+    "guayaquil": ("Ecuador", ""),
+    "la paz": ("Bolivia", ""),
+    "asuncion": ("Paraguay", ""),
+    "montevideo": ("Uruguay", ""),
+    "panama city": ("Panama", ""),
+    "san jose costa rica": ("Costa Rica", ""),
+    "havana": ("Cuba", ""),
+    "san salvador": ("El Salvador", ""),
+    "tegucigalpa": ("Honduras", ""),
+    "managua": ("Nicaragua", ""),
+    "guatemala city": ("Guatemala", ""),
+    "santo domingo": ("Dominican Republic", ""),
+    "san juan pr": ("Puerto Rico", ""),
+}
+
 EMAIL_REGEX = re.compile(
     r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 )
@@ -752,6 +1226,35 @@ def fix_encoding(value) -> str:
     return s
 
 
+def _ascii_fold(s: str) -> str:
+    """Strip accents/diacritics for substring matching.
+    'São Paulo' → 'Sao Paulo', 'Montréal' → 'Montreal', 'Düsseldorf' → 'Dusseldorf'."""
+    if not s:
+        return ""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", s)
+        if not unicodedata.combining(c)
+    )
+
+
+def lookup_city_in_location(location: str) -> Tuple[str, str]:
+    """Search a free-text location for any city in CITY_TO_GEO and return
+    (country, state_or_province). Used as a final fallback for LinkedIn-style
+    strings like 'Greater Chicago Area' or 'Greater Toulouse Metropolitan Area'
+    where no country is explicitly named.
+
+    Matches on word boundaries and prefers the longest city name (so 'New York'
+    wins over 'York', 'Saint Petersburg' wins over 'Petersburg' if present)."""
+    if not location:
+        return "", ""
+    haystack = _ascii_fold(location.lower())
+    # Sort keys longest-first so multi-word cities win over single-word substrings
+    for city in sorted(CITY_TO_GEO.keys(), key=len, reverse=True):
+        if re.search(r"\b" + re.escape(city) + r"\b", haystack):
+            return CITY_TO_GEO[city]
+    return "", ""
+
+
 def clean_text(value, lowercase: bool = False) -> str:
     """Trim, collapse whitespace, fix encoding."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -953,6 +1456,16 @@ def parse_location_string(loc: str) -> Tuple[str, str]:
                 if re.search(r"\b" + re.escape(canon.lower()) + r"\b", low):
                     country = canon
                     break
+
+    # CITY lookup runs BEFORE the single-word state substring scan, because
+    # multi-word city keys ('Washington DC', 'New York City', 'Tel Aviv') are
+    # more specific than ambiguous single-word state names ('Washington').
+    if not country:
+        city_country, city_state = lookup_city_in_location(s)
+        if city_country:
+            country = city_country
+            if city_state and city_country in ("United States", "Canada"):
+                state = city_state
 
     # If still no country but the string mentions a known US state / CA province as a word
     if not country:
