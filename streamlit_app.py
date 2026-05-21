@@ -398,6 +398,16 @@ COLUMN_ALIASES: Dict[str, List[str]] = {
         "description", "notes", "note", "comments", "comment", "remarks",
         "details", "about",
     ],
+    "Market Segment": [
+        "market segment", "marketsegment", "segment", "market",
+    ],
+    "Main Application": [
+        "main application", "mainapplication", "application", "use case",
+        "usecase",
+    ],
+    "Industry Sector": [
+        "industry sector", "industrysector", "industry", "sector", "vertical",
+    ],
 }
 
 # "Location" gets a separate slot because it's parsed differently
@@ -880,9 +890,205 @@ CITY_TO_GEO: Dict[str, Tuple[str, str]] = {
     "san juan pr": ("Puerto Rico", ""),
 }
 
+# ---------------------------------------------------------------------------
+# Email ccTLD → Country
+# ---------------------------------------------------------------------------
+# Used when no Country / State / Location data is available, by inspecting the
+# email-address top-level domain. Generic TLDs (.com, .org, .net, .edu, .gov,
+# .io, .ai, .co, .me, .tv) are DELIBERATELY OMITTED because they do not imply
+# a country. Multi-segment TLDs (.co.uk, .com.au) are checked before single
+# segments via longest-match ordering.
+EMAIL_TLD_TO_COUNTRY: Dict[str, str] = {
+    # Europe
+    ".uk": "United Kingdom", ".co.uk": "United Kingdom",
+    ".ac.uk": "United Kingdom", ".org.uk": "United Kingdom",
+    ".gov.uk": "United Kingdom",
+    ".ie": "Ireland", ".de": "Germany", ".fr": "France", ".it": "Italy",
+    ".es": "Spain", ".pt": "Portugal", ".nl": "Netherlands", ".be": "Belgium",
+    ".lu": "Luxembourg", ".ch": "Switzerland", ".at": "Austria",
+    ".se": "Sweden", ".no": "Norway", ".dk": "Denmark", ".fi": "Finland",
+    ".is": "Iceland", ".pl": "Poland", ".cz": "Czech Republic",
+    ".sk": "Slovakia", ".hu": "Hungary", ".ro": "Romania", ".bg": "Bulgaria",
+    ".gr": "Greece", ".hr": "Croatia", ".si": "Slovenia", ".rs": "Serbia",
+    ".ee": "Estonia", ".lv": "Latvia", ".lt": "Lithuania",
+    ".ru": "Russia", ".ua": "Ukraine", ".by": "Belarus", ".md": "Moldova",
+    # Middle East
+    ".tr": "Turkey", ".il": "Israel", ".sa": "Saudi Arabia",
+    ".ae": "United Arab Emirates", ".qa": "Qatar", ".kw": "Kuwait",
+    ".bh": "Bahrain", ".om": "Oman", ".jo": "Jordan", ".lb": "Lebanon",
+    ".ir": "Iran (Islamic Republic of)",
+    # Africa
+    ".eg": "Egypt", ".ma": "Morocco", ".tn": "Tunisia", ".dz": "Algeria",
+    ".za": "South Africa", ".ng": "Nigeria", ".ke": "Kenya", ".gh": "Ghana",
+    ".sn": "Senegal", ".et": "Ethiopia",
+    # Asia
+    ".jp": "Japan", ".kr": "South Korea", ".cn": "China", ".com.cn": "China",
+    ".tw": "Taiwan", ".com.tw": "Taiwan", ".hk": "Hong Kong",
+    ".com.hk": "Hong Kong", ".sg": "Singapore", ".com.sg": "Singapore",
+    ".my": "Malaysia", ".com.my": "Malaysia", ".id": "Indonesia",
+    ".co.id": "Indonesia", ".th": "Thailand", ".co.th": "Thailand",
+    ".vn": "Vietnam", ".com.vn": "Vietnam", ".ph": "Philippines",
+    ".com.ph": "Philippines", ".in": "India", ".co.in": "India",
+    ".pk": "Pakistan", ".com.pk": "Pakistan", ".bd": "Bangladesh",
+    ".com.bd": "Bangladesh", ".lk": "Sri Lanka", ".np": "Nepal",
+    ".kh": "Cambodia", ".mm": "Myanmar",
+    # Oceania
+    ".au": "Australia", ".com.au": "Australia",
+    ".nz": "New Zealand", ".co.nz": "New Zealand",
+    # Americas
+    ".us": "United States", ".ca": "Canada",
+    ".mx": "Mexico", ".com.mx": "Mexico",
+    ".br": "Brazil", ".com.br": "Brazil",
+    ".ar": "Argentina", ".com.ar": "Argentina",
+    ".cl": "Chile", ".pe": "Peru", ".ve": "Venezuela",
+    ".uy": "Uruguay", ".py": "Paraguay", ".bo": "Bolivia",
+    ".ec": "Ecuador", ".cr": "Costa Rica", ".pa": "Panama",
+    ".do": "Dominican Republic", ".gt": "Guatemala", ".cu": "Cuba",
+}
+
+# ---------------------------------------------------------------------------
+# Curated Company → Country HQ lookup (last-resort fallback)
+# ---------------------------------------------------------------------------
+# Conservative: only globally-unambiguous multinationals. Matching is done
+# after lowercasing and stripping common corporate suffixes (Inc, Ltd, GmbH...)
+# so 'Microsoft Corporation' → 'microsoft' → United States.
+COMPANY_HQ: Dict[str, str] = {
+    # OPAL-RT itself (Arnaud's employer)
+    "opal-rt": "Canada", "opal rt": "Canada",
+    "opal-rt technologies": "Canada",
+    # US tech / cloud
+    "microsoft": "United States", "apple": "United States",
+    "google": "United States", "alphabet": "United States",
+    "amazon": "United States", "aws": "United States", "meta": "United States",
+    "facebook": "United States", "netflix": "United States",
+    "adobe": "United States", "oracle": "United States",
+    "salesforce": "United States", "ibm": "United States",
+    "intel": "United States", "nvidia": "United States", "amd": "United States",
+    "qualcomm": "United States", "cisco": "United States",
+    "hp": "United States", "hewlett-packard": "United States",
+    "hpe": "United States", "dell": "United States", "vmware": "United States",
+    "tesla": "United States", "spacex": "United States",
+    "openai": "United States", "anthropic": "United States",
+    "uber": "United States", "stripe": "United States",
+    "snowflake": "United States", "databricks": "United States",
+    "palantir": "United States",
+    # US industrial / aerospace / defense / energy
+    "boeing": "United States", "lockheed martin": "United States",
+    "northrop grumman": "United States", "raytheon": "United States",
+    "rtx": "United States", "general dynamics": "United States",
+    "general electric": "United States", "ge": "United States",
+    "ge vernova": "United States", "honeywell": "United States",
+    "caterpillar": "United States", "john deere": "United States",
+    "deere": "United States", "3m": "United States", "dow": "United States",
+    "dupont": "United States", "exxonmobil": "United States",
+    "chevron": "United States", "conocophillips": "United States",
+    # US auto
+    "ford": "United States", "general motors": "United States",
+    "gm": "United States", "rivian": "United States",
+    "lucid motors": "United States",
+    # Germany
+    "siemens": "Germany", "siemens energy": "Germany", "bosch": "Germany",
+    "sap": "Germany", "bmw": "Germany", "mercedes-benz": "Germany",
+    "mercedes": "Germany", "daimler": "Germany", "volkswagen": "Germany",
+    "vw": "Germany", "audi": "Germany", "porsche": "Germany",
+    "continental": "Germany", "zf": "Germany", "zf friedrichshafen": "Germany",
+    "thyssenkrupp": "Germany", "lufthansa": "Germany", "deutsche bank": "Germany",
+    "deutsche telekom": "Germany", "infineon": "Germany",
+    # France
+    "airbus": "France", "thales": "France", "safran": "France",
+    "dassault": "France", "renault": "France", "stellantis": "France",
+    "totalenergies": "France", "total": "France", "edf": "France",
+    "schneider electric": "France", "schneider-electric": "France",
+    "alstom": "France", "valeo": "France", "michelin": "France",
+    "loreal": "France", "l'oréal": "France", "engie": "France",
+    "ovh": "France", "ovhcloud": "France",
+    # Italy
+    "ferrari": "Italy", "fiat": "Italy", "stellantis italy": "Italy",
+    "leonardo": "Italy", "eni": "Italy", "enel": "Italy",
+    "pirelli": "Italy", "iveco": "Italy",
+    # Other Europe
+    "abb": "Switzerland", "nestle": "Switzerland", "nestlé": "Switzerland",
+    "roche": "Switzerland", "novartis": "Switzerland", "ubs": "Switzerland",
+    "credit suisse": "Switzerland", "shell": "Netherlands",
+    "asml": "Netherlands", "philips": "Netherlands", "akzo nobel": "Netherlands",
+    "heineken": "Netherlands", "ing": "Netherlands",
+    "ericsson": "Sweden", "volvo": "Sweden", "ikea": "Sweden",
+    "spotify": "Sweden", "scania": "Sweden", "saab": "Sweden",
+    "atlas copco": "Sweden", "nokia": "Finland", "kone": "Finland",
+    "fortum": "Finland", "equinor": "Norway", "statoil": "Norway",
+    "novo nordisk": "Denmark", "maersk": "Denmark", "vestas": "Denmark",
+    "ørsted": "Denmark", "orsted": "Denmark",
+    "bp": "United Kingdom", "british petroleum": "United Kingdom",
+    "rolls-royce": "United Kingdom", "rolls royce": "United Kingdom",
+    "bae systems": "United Kingdom", "arm": "United Kingdom",
+    "barclays": "United Kingdom", "hsbc": "United Kingdom",
+    "vodafone": "United Kingdom", "unilever": "United Kingdom",
+    "diageo": "United Kingdom", "glaxosmithkline": "United Kingdom",
+    "gsk": "United Kingdom", "astrazeneca": "United Kingdom",
+    "iberdrola": "Spain", "telefonica": "Spain", "telefónica": "Spain",
+    "santander": "Spain", "repsol": "Spain", "indra": "Spain",
+    # Japan
+    "toyota": "Japan", "honda": "Japan", "nissan": "Japan", "mazda": "Japan",
+    "subaru": "Japan", "suzuki": "Japan", "mitsubishi": "Japan",
+    "mitsubishi electric": "Japan", "mitsubishi heavy industries": "Japan",
+    "hitachi": "Japan", "sony": "Japan", "panasonic": "Japan",
+    "fujitsu": "Japan", "nec": "Japan", "denso": "Japan", "yamaha": "Japan",
+    "canon": "Japan", "nikon": "Japan", "olympus": "Japan",
+    "softbank": "Japan", "rakuten": "Japan",
+    # South Korea
+    "samsung": "South Korea", "samsung electronics": "South Korea",
+    "lg": "South Korea", "lg electronics": "South Korea",
+    "hyundai": "South Korea", "kia": "South Korea", "sk hynix": "South Korea",
+    "posco": "South Korea", "doosan": "South Korea",
+    # China
+    "huawei": "China", "alibaba": "China", "tencent": "China",
+    "baidu": "China", "byd": "China", "didi": "China", "xiaomi": "China",
+    "lenovo": "China", "haier": "China", "sinopec": "China",
+    "petrochina": "China", "cnpc": "China", "state grid": "China",
+    # Taiwan
+    "tsmc": "Taiwan", "foxconn": "Taiwan", "asus": "Taiwan", "acer": "Taiwan",
+    "mediatek": "Taiwan",
+    # India
+    "tata": "India", "tata motors": "India", "tata consultancy services": "India",
+    "tcs": "India", "infosys": "India", "wipro": "India",
+    "reliance industries": "India", "reliance": "India",
+    "mahindra": "India", "bharat heavy electricals": "India",
+    "bhel": "India",
+    # Australia / Canada / Saudi Arabia / Brazil
+    "bhp": "Australia", "rio tinto": "Australia",
+    "qantas": "Australia", "telstra": "Australia",
+    "bombardier": "Canada", "cae": "Canada", "magna": "Canada",
+    "magna international": "Canada", "hydro-québec": "Canada",
+    "hydro quebec": "Canada", "shopify": "Canada", "blackberry": "Canada",
+    "rbc": "Canada", "td": "Canada", "td bank": "Canada", "cn rail": "Canada",
+    "saudi aramco": "Saudi Arabia", "aramco": "Saudi Arabia",
+    "sabic": "Saudi Arabia",
+    "embraer": "Brazil", "petrobras": "Brazil", "vale": "Brazil",
+}
+
 EMAIL_REGEX = re.compile(
     r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 )
+
+# Fields shown (and editable) in the column-mapping UI
+MAPPABLE_TARGETS: List[str] = [
+    "First Name",
+    "Last Name",
+    "Job Title",
+    "Company Name",
+    "Email",
+    "Business Phone",
+    "LinkedIn",
+    "Country",
+    "State or Province",
+    "Description",
+    "Market Segment",
+    "Main Application",
+    "Industry Sector",
+]
+# Pseudo-target shown alongside the above; if mapped, its value is parsed
+# into Country + State/Province (instead of being copied verbatim).
+LOCATION_TARGET_LABEL = "Location (parsed → Country + State/Province)"
 
 # Brand palette
 BRAND = {
@@ -1255,6 +1461,70 @@ def lookup_city_in_location(location: str) -> Tuple[str, str]:
     return "", ""
 
 
+def country_from_email(email: str) -> str:
+    """Infer country from email domain's country-code TLD.
+    'arnaud@opal-rt.com' → '' (generic .com, no signal)
+    'jens@example.dk' → 'Denmark'
+    'pierre@enterprise.co.uk' → 'United Kingdom'
+    """
+    if not email or "@" not in email:
+        return ""
+    domain = email.rsplit("@", 1)[1].lower().strip(" .,")
+    if not domain:
+        return ""
+    # Longest-match first so '.co.uk' wins over '.uk'
+    for tld in sorted(EMAIL_TLD_TO_COUNTRY.keys(), key=len, reverse=True):
+        if domain.endswith(tld):
+            return EMAIL_TLD_TO_COUNTRY[tld]
+    return ""
+
+
+_CORP_SUFFIX_PATTERN = re.compile(
+    r"[,\s]*\b("
+    r"inc|incorporated|llc|l\.l\.c\.?|ltd|limited|"
+    r"corp|corporation|co|company|"
+    r"plc|gmbh|ag|sa|s\.a\.?|sas|sarl|spa|s\.p\.a\.?|bv|b\.v\.?|nv|n\.v\.?|"
+    r"oy|ab|as|kk|k\.k\.?|pty|pte|holdings|group|technologies|tech|"
+    r"international|intl|systems|solutions|industries"
+    r")\b\.?",
+    re.IGNORECASE,
+)
+
+
+def _normalize_company(name: str) -> str:
+    """Strip common corporate suffixes for fuzzy company-HQ lookup."""
+    if not name:
+        return ""
+    s = name.lower().strip()
+    # Repeatedly strip suffixes ("Microsoft Corp Inc" → "Microsoft Corp" → "Microsoft")
+    prev = None
+    while prev != s:
+        prev = s
+        s = _CORP_SUFFIX_PATTERN.sub("", s).strip(" ,.;-")
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def country_from_company(company: str) -> str:
+    """Best-effort lookup of company HQ → country.
+    Tries the full suffix-stripped name first, then progressively drops
+    trailing words (so 'Toyota Motor Corporation' → 'toyota motor' →
+    'toyota' all get a chance to match). Returns '' if nothing matches."""
+    norm = _normalize_company(company)
+    if not norm:
+        return ""
+    parts = norm.split()
+    while parts:
+        candidate = " ".join(parts)
+        if candidate in COMPANY_HQ:
+            return COMPANY_HQ[candidate]
+        folded = _ascii_fold(candidate)
+        if folded != candidate and folded in COMPANY_HQ:
+            return COMPANY_HQ[folded]
+        parts.pop()  # drop the last word and try again
+    return ""
+
+
 def clean_text(value, lowercase: bool = False) -> str:
     """Trim, collapse whitespace, fix encoding."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -1275,43 +1545,81 @@ def normalize_header(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", s)
 
 
-def detect_source_column(
-    source_columns: List[str], target_field: str
-) -> Optional[str]:
-    """Find the best matching source column for a Dynamics target field."""
+def _column_data_quality(df: pd.DataFrame, col: str) -> int:
+    """Return the number of non-empty values in df[col]. Used as a tiebreaker
+    when multiple source columns match the same target (e.g., 'Account' and
+    '#Account' — we pick whichever has more populated rows)."""
+    if col not in df.columns:
+        return 0
+    series = df[col]
+    # Pandas can return a DataFrame if there are duplicate column names —
+    # collapse to the first such column in that case.
+    if isinstance(series, pd.DataFrame):
+        series = series.iloc[:, 0]
+    s = series.astype(str).str.strip()
+    return int(((s != "") & (s.str.lower() != "nan")).sum())
+
+
+def detect_source_column(df: pd.DataFrame, target_field: str) -> Optional[str]:
+    """Find the best matching source column for a Dynamics target field.
+    When multiple source columns match the same target's aliases, return the
+    one with the most non-empty values."""
     aliases = COLUMN_ALIASES.get(target_field, [])
-    normalized_sources = {normalize_header(c): c for c in source_columns}
+    alias_keys = {normalize_header(a) for a in aliases if normalize_header(a)}
+    if not alias_keys:
+        return None
 
-    # 1) exact normalized match
-    for alias in aliases:
-        key = normalize_header(alias)
-        if key in normalized_sources:
-            return normalized_sources[key]
+    # Keep ALL columns with their normalized forms (no dict-collision data loss)
+    columns_with_norms: List[Tuple[str, str]] = [
+        (normalize_header(c), c) for c in df.columns
+    ]
 
-    # 2) contains match (alias as substring of source column)
-    for alias in aliases:
-        key = normalize_header(alias)
-        if not key:
+    exact_candidates: List[str] = []
+    substring_candidates: List[str] = []
+    for norm_src, orig_src in columns_with_norms:
+        if not norm_src:
             continue
-        for norm_src, orig_src in normalized_sources.items():
-            if key == norm_src or key in norm_src:
-                return orig_src
+        if norm_src in alias_keys:
+            if orig_src not in exact_candidates:
+                exact_candidates.append(orig_src)
+        else:
+            for key in alias_keys:
+                if key in norm_src:
+                    if orig_src not in substring_candidates:
+                        substring_candidates.append(orig_src)
+                    break
 
-    return None
+    pool = exact_candidates or substring_candidates
+    if not pool:
+        return None
+    if len(pool) == 1:
+        return pool[0]
+    # Pick the candidate with the most populated rows
+    return max(pool, key=lambda c: _column_data_quality(df, c))
 
 
-def detect_location_column(source_columns: List[str]) -> Optional[str]:
-    """Locate a 'Location'-style column for parsing."""
-    normalized_sources = {normalize_header(c): c for c in source_columns}
-    for alias in LOCATION_ALIASES:
-        key = normalize_header(alias)
-        if key in normalized_sources:
-            return normalized_sources[key]
-    # also accept things containing 'location'
-    for norm_src, orig_src in normalized_sources.items():
-        if "location" in norm_src:
-            return orig_src
-    return None
+def detect_location_column(df: pd.DataFrame) -> Optional[str]:
+    """Locate a 'Location'-style column for parsing. Picks the richest one
+    when multiple location-like columns exist."""
+    alias_keys = {normalize_header(a) for a in LOCATION_ALIASES if normalize_header(a)}
+    columns_with_norms = [(normalize_header(c), c) for c in df.columns]
+
+    exact: List[str] = []
+    contains: List[str] = []
+    for norm_src, orig_src in columns_with_norms:
+        if not norm_src:
+            continue
+        if norm_src in alias_keys:
+            if orig_src not in exact:
+                exact.append(orig_src)
+        elif "location" in norm_src and orig_src not in contains:
+            contains.append(orig_src)
+    pool = exact or contains
+    if not pool:
+        return None
+    if len(pool) == 1:
+        return pool[0]
+    return max(pool, key=lambda c: _column_data_quality(df, c))
 
 
 def normalize_country(raw: str) -> str:
@@ -1551,31 +1859,46 @@ def strip_ghost_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_column_mapping(df: pd.DataFrame) -> Dict[str, Optional[str]]:
-    """Map Dynamics target fields → source column names found in df."""
-    cols = list(df.columns)
+    """Map Dynamics target fields → source column names found in df.
+    When multiple source columns match the same target, the one with the most
+    populated rows wins."""
     mapping: Dict[str, Optional[str]] = {}
     for target in COLUMN_ALIASES.keys():
-        mapping[target] = detect_source_column(cols, target)
-    mapping["__location__"] = detect_location_column(cols)
+        mapping[target] = detect_source_column(df, target)
+    mapping["__location__"] = detect_location_column(df)
     return mapping
 
 
 def process_dataframe(
     raw_df: pd.DataFrame,
     settings: Dict[str, str],
+    mapping_override: Optional[Dict[str, Optional[str]]] = None,
 ) -> Tuple[pd.DataFrame, List[Dict], Dict[str, Optional[str]], Dict[str, int]]:
     """Main pipeline. Returns:
         - output_df: ready-to-export DataFrame in DYNAMICS_COLUMNS order
         - errors: list of {row, field, issue} dicts
-        - mapping: detected column mapping for transparency
-        - stats: counts of rows in / out / dropped"""
+        - mapping: column mapping actually used (auto + user overrides)
+        - stats: counts of rows in / out / dropped
+
+    `mapping_override`, when supplied, replaces individual entries in the auto-
+    detected mapping. A value of None for a key in `mapping_override` means
+    'do not use any source column for this target' (explicit un-map)."""
 
     df = strip_ghost_columns(raw_df.copy())
 
     # Normalize header strings (preserve original for display but trim)
     df.columns = [fix_encoding(str(c)).strip() for c in df.columns]
 
-    mapping = build_column_mapping(df)
+    auto_mapping = build_column_mapping(df)
+    if mapping_override is not None:
+        # Merge: override wins for any key present in override (incl. explicit None)
+        mapping: Dict[str, Optional[str]] = {**auto_mapping, **mapping_override}
+        # Validate that every mapped source column actually exists in df
+        for k, v in list(mapping.items()):
+            if v is not None and v not in df.columns:
+                mapping[k] = None
+    else:
+        mapping = auto_mapping
 
     # Build the set of source columns we've already mapped to a target field.
     # The row-scan fallback for country/state uses this to avoid scanning the
@@ -1659,8 +1982,8 @@ def process_dataframe(
             if not state and loc_state and country in ("United States", "Canada"):
                 state = loc_state
 
-        # LAST-RESORT FALLBACK: scan every unmapped column in this row for a
-        # value that *exactly* matches a country / US state / CA province.
+        # LAST-RESORT FALLBACK 2 of 4: scan every unmapped column in this row
+        # for a value that *exactly* matches a country / US state / CA province.
         # This rescues sloppy exports where country lives in unnamed columns
         # like 'Column9' or 'Unnamed: 10' with no recognisable header.
         if not country or not state:
@@ -1693,6 +2016,22 @@ def process_dataframe(
                             country = "Canada"
                         continue
 
+        # LAST-RESORT FALLBACK 3 of 4: country-code TLD on the email address.
+        # 'jens@example.dk' → Denmark; 'pierre@enterprise.co.uk' → United Kingdom.
+        # Generic TLDs (.com / .org / .net / .io / .ai) yield no signal.
+        if not country and email:
+            tld_country = country_from_email(email)
+            if tld_country:
+                country = tld_country
+
+        # LAST-RESORT FALLBACK 4 of 4: curated company → HQ country lookup.
+        # Only multinationals where the HQ is unambiguous (Microsoft → US,
+        # Airbus → France, Toyota → Japan, etc.)
+        if not country and company:
+            hq_country = country_from_company(company)
+            if hq_country:
+                country = hq_country
+
         # Country may have been pulled but isn't on the canonical list — final guard
         if country and country not in COUNTRIES:
             # If it's actually a US state or CA province name that landed in the
@@ -1709,12 +2048,34 @@ def process_dataframe(
         if country not in ("United States", "Canada"):
             state = ""
 
-        # --- Marketing/segment/sector: only fill from explicit user override or
-        #     a direct source-file match (we have no source aliases for those,
-        #     so they stay blank unless the user picked them in global settings)
-        market_segment = settings.get("market_segment", "") or ""
-        main_application = settings.get("main_application", "") or ""
-        industry_sector = settings.get("industry_sector", "") or ""
+        # --- Marketing/segment/sector: user override (global setting) wins;
+        #     otherwise pull from source-file column if mapped, but only if
+        #     the value matches a canonical dropdown option (no invention).
+        src_market_segment = clean_text(pull("Market Segment"))
+        if src_market_segment not in MARKET_SEGMENT_OPTIONS:
+            src_market_segment = ""
+        market_segment = (
+            settings.get("market_segment", "") or src_market_segment or ""
+        )
+
+        # Main Application depends on Market Segment — validate against the
+        # allowed list for the resolved segment.
+        src_main_application = clean_text(pull("Main Application"))
+        allowed_apps = MAIN_APPLICATION_BY_SEGMENT.get(market_segment, [""])
+        if src_main_application not in allowed_apps:
+            src_main_application = ""
+        main_application = (
+            settings.get("main_application", "") or src_main_application or ""
+        )
+        if main_application not in allowed_apps:
+            main_application = ""
+
+        src_industry_sector = clean_text(pull("Industry Sector"))
+        if src_industry_sector not in INDUSTRY_SECTOR_OPTIONS:
+            src_industry_sector = ""
+        industry_sector = (
+            settings.get("industry_sector", "") or src_industry_sector or ""
+        )
 
         # --- Subject (mandatory, from global settings) ---
         subject = settings.get("subject", "").strip() or default_subject()
@@ -1910,42 +2271,130 @@ def render_global_settings() -> Dict[str, str]:
     }
 
 
-def render_mapping_panel(mapping: Dict[str, Optional[str]]) -> None:
-    """Show which source columns were auto-detected for each Dynamics field."""
-    with st.expander("🔎 View detected column mapping", expanded=False):
-        rows_html = []
-        # Build mapping in display order excluding the Location-internal key
-        for target in COLUMN_ALIASES.keys():
-            src = mapping.get(target)
-            if src:
-                rows_html.append(
-                    f'<div class="mapping-row">'
-                    f'<span class="mapping-source">{src}</span>'
-                    f'<span class="mapping-arrow">→</span>'
-                    f'<span class="mapping-target">{target}</span>'
-                    f'</div>'
-                )
-            else:
-                rows_html.append(
-                    f'<div class="mapping-row">'
-                    f'<span class="mapping-missing">— not found —</span>'
-                    f'<span class="mapping-arrow">→</span>'
-                    f'<span class="mapping-target">{target}</span>'
-                    f'</div>'
-                )
-        loc = mapping.get("__location__")
-        if loc:
-            rows_html.append(
-                f'<div class="mapping-row">'
-                f'<span class="mapping-source">{loc}</span>'
-                f'<span class="mapping-arrow">→</span>'
-                f'<span class="mapping-target">Country + State/Province (parsed)</span>'
-                f'</div>'
+MAPPING_KEY_PREFIX = "map_select_"
+LOCATION_TARGET_KEY = "__location__"
+
+
+def _mapping_key(target: str) -> str:
+    """Stable session_state key for a target field's selectbox."""
+    return MAPPING_KEY_PREFIX + re.sub(r"[^A-Za-z0-9]+", "_", target).lower()
+
+
+def initialise_mapping_state(df: pd.DataFrame, auto_mapping: Dict[str, Optional[str]]) -> None:
+    """Seed session_state with the auto-detected mapping. Called once per
+    uploaded file. Existing user overrides for *other* files are cleared by
+    main() when a new file is detected."""
+    options = ["(none)"] + list(df.columns)
+    for target in MAPPABLE_TARGETS:
+        key = _mapping_key(target)
+        if key not in st.session_state:
+            auto_val = auto_mapping.get(target)
+            st.session_state[key] = auto_val if auto_val in options else "(none)"
+    loc_key = _mapping_key(LOCATION_TARGET_KEY)
+    if loc_key not in st.session_state:
+        loc_auto = auto_mapping.get(LOCATION_TARGET_KEY)
+        st.session_state[loc_key] = loc_auto if loc_auto in options else "(none)"
+
+
+def render_mapping_editor(
+    df: pd.DataFrame, auto_mapping: Dict[str, Optional[str]]
+) -> None:
+    """Editable column mapping with a Save button. Each Dynamics target field
+    gets its own dropdown of source columns. Defaults come from auto-detection;
+    the user can change any of them. Changes are live (no Apply needed); Save
+    is a confirmation gesture."""
+    options = ["(none)"] + list(df.columns)
+
+    st.markdown(
+        '<div class="section-card">'
+        '<h3>③ Column mapping</h3>'
+        '<div class="section-hint">Each Dynamics field is mapped to the best-'
+        'matching source column. Adjust any mapping with the dropdowns below '
+        "and click <strong>Save mapping</strong> to confirm. Choose "
+        '<em>(none)</em> to leave a field unmapped. The <em>Location</em> '
+        'slot, when set, is parsed into Country + State/Province.</div>',
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns(2)
+    half = (len(MAPPABLE_TARGETS) + 1) // 2
+    for i, target in enumerate(MAPPABLE_TARGETS):
+        target_with_star = (
+            target + " *"
+            if target in MANDATORY_FIELDS
+            else target
+        )
+        container = col1 if i < half else col2
+        with container:
+            current = st.session_state.get(_mapping_key(target), "(none)")
+            if current not in options:
+                current = "(none)"
+            st.selectbox(
+                target_with_star,
+                options=options,
+                index=options.index(current),
+                key=_mapping_key(target),
+                help=(
+                    f"Source column to use for '{target}'. "
+                    f"Auto-detected: {auto_mapping.get(target) or '— none —'}"
+                ),
             )
+
+    # Location pseudo-target on its own line (full width)
+    loc_current = st.session_state.get(_mapping_key(LOCATION_TARGET_KEY), "(none)")
+    if loc_current not in options:
+        loc_current = "(none)"
+    st.selectbox(
+        "Location (parsed → Country + State/Province)",
+        options=options,
+        index=options.index(loc_current),
+        key=_mapping_key(LOCATION_TARGET_KEY),
+        help=(
+            "Free-text location column to parse into Country + State/Province. "
+            f"Auto-detected: {auto_mapping.get(LOCATION_TARGET_KEY) or '— none —'}"
+        ),
+    )
+
+    save_col, reset_col, _spacer = st.columns([1, 1, 2])
+    with save_col:
+        if st.button("💾 Save mapping", key="btn_save_mapping"):
+            st.session_state["mapping_saved"] = True
+    with reset_col:
+        if st.button("↺ Reset to auto", key="btn_reset_mapping"):
+            for t in MAPPABLE_TARGETS:
+                st.session_state[_mapping_key(t)] = (
+                    auto_mapping.get(t)
+                    if auto_mapping.get(t) in options
+                    else "(none)"
+                )
+            st.session_state[_mapping_key(LOCATION_TARGET_KEY)] = (
+                auto_mapping.get(LOCATION_TARGET_KEY)
+                if auto_mapping.get(LOCATION_TARGET_KEY) in options
+                else "(none)"
+            )
+            st.session_state["mapping_saved"] = False
+            st.rerun()
+
+    if st.session_state.get("mapping_saved"):
         st.markdown(
-            f'<div class="mapping-grid">{"".join(rows_html)}</div>',
+            '<div class="success-banner" style="margin-top: 0.75rem;">'
+            '✓ Mapping saved — click <strong>Process file</strong> below to apply it.'
+            '</div>',
             unsafe_allow_html=True,
         )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def get_user_mapping() -> Dict[str, Optional[str]]:
+    """Read the user's column-mapping selections from session_state."""
+    mapping: Dict[str, Optional[str]] = {}
+    for target in MAPPABLE_TARGETS:
+        val = st.session_state.get(_mapping_key(target))
+        mapping[target] = None if not val or val == "(none)" else val
+    loc_val = st.session_state.get(_mapping_key(LOCATION_TARGET_KEY))
+    mapping[LOCATION_TARGET_KEY] = None if not loc_val or loc_val == "(none)" else loc_val
+    return mapping
 
 
 def render_stats(stats: Dict[str, int], n_errors: int) -> None:
@@ -2009,7 +2458,8 @@ def main() -> None:
         '<div class="section-card">'
         '<h3>② Upload Source File</h3>'
         '<div class="section-hint">CSV or Excel (.xlsx). The app will auto-detect '
-        'and map columns to the Dynamics template.</div>',
+        'and map columns to the Dynamics template — you can adjust the mapping '
+        'before processing.</div>',
         unsafe_allow_html=True,
     )
     uploaded = st.file_uploader(
@@ -2029,28 +2479,62 @@ def main() -> None:
         render_footer()
         return
 
+    # -------- Read file + auto-detect mapping (once per upload) --------
+    is_new_file = (
+        st.session_state.get("uploaded_file_name") != uploaded.name
+        or st.session_state.get("uploaded_file_size") != uploaded.size
+    )
+    if is_new_file:
+        # Reset any prior mapping state so the new file's auto-detection takes effect
+        for k in list(st.session_state.keys()):
+            if k.startswith(MAPPING_KEY_PREFIX):
+                del st.session_state[k]
+        st.session_state["mapping_saved"] = False
+        st.session_state.pop("processed", None)
+        try:
+            with st.spinner("Reading file…"):
+                raw_df = read_uploaded_file(uploaded)
+            cleaned = strip_ghost_columns(raw_df.copy())
+            cleaned.columns = [fix_encoding(str(c)).strip() for c in cleaned.columns]
+            st.session_state["cleaned_df"] = cleaned
+            st.session_state["auto_mapping"] = build_column_mapping(cleaned)
+            st.session_state["uploaded_file_name"] = uploaded.name
+            st.session_state["uploaded_file_size"] = uploaded.size
+        except Exception as e:  # noqa: BLE001
+            st.markdown(
+                f'<div class="error-banner">❌ Failed to read file: {e}</div>',
+                unsafe_allow_html=True,
+            )
+            render_footer()
+            return
+
+    cleaned_df = st.session_state["cleaned_df"]
+    auto_mapping = st.session_state["auto_mapping"]
+    initialise_mapping_state(cleaned_df, auto_mapping)
+
+    # -------- Editable column mapping --------
+    render_mapping_editor(cleaned_df, auto_mapping)
+
     # -------- Process --------
     st.markdown(
         '<div class="section-card">'
-        '<h3>③ Normalize & Validate</h3>'
-        '<div class="section-hint">Click below to process the uploaded file. '
-        'The app will clean encoding, normalize formatting, parse locations, '
-        'remove duplicate emails, and validate every row.</div>',
+        '<h3>④ Normalize & Validate</h3>'
+        '<div class="section-hint">Click below to process the uploaded file with '
+        'the current column mapping. The app will clean encoding, normalize '
+        'formatting, parse locations, infer country (from email TLD or company '
+        'HQ if needed), remove duplicate emails, and validate every row.</div>',
         unsafe_allow_html=True,
     )
     process_clicked = st.button("🚀 Process file", type="primary")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    if not process_clicked and "processed" not in st.session_state:
-        render_footer()
-        return
-
     if process_clicked:
         try:
-            with st.spinner("Reading file…"):
-                raw_df = read_uploaded_file(uploaded)
             with st.spinner("Normalizing and validating data…"):
-                output_df, errors, mapping, stats = process_dataframe(raw_df, settings)
+                user_mapping = get_user_mapping()
+                output_df, errors, mapping, stats = process_dataframe(
+                    cleaned_df, settings, mapping_override=user_mapping
+                )
             st.session_state["processed"] = {
                 "output_df": output_df,
                 "errors": errors,
@@ -2060,7 +2544,7 @@ def main() -> None:
             }
         except Exception as e:  # noqa: BLE001
             st.markdown(
-                f'<div class="error-banner">❌ Failed to read or process file: {e}</div>',
+                f'<div class="error-banner">❌ Failed to process file: {e}</div>',
                 unsafe_allow_html=True,
             )
             render_footer()
@@ -2074,17 +2558,15 @@ def main() -> None:
 
     output_df = state["output_df"]
     errors = state["errors"]
-    mapping = state["mapping"]
     stats = state["stats"]
 
     st.markdown(
         '<div class="section-card">'
-        '<h3>④ Results</h3>',
+        '<h3>⑤ Results</h3>',
         unsafe_allow_html=True,
     )
 
     render_stats(stats, len(errors))
-    render_mapping_panel(mapping)
 
     if not errors:
         st.markdown(
