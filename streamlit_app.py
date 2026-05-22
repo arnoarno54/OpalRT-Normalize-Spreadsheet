@@ -2156,6 +2156,34 @@ def process_dataframe(
     return output_df, errors, mapping, stats
 
 
+def _safe_filename_component(name: str) -> str:
+    """Strip characters illegal in filenames on Windows / macOS / Linux."""
+    if not name:
+        return ""
+    s = re.sub(r"[<>:\"/\\|?*\x00-\x1f]", "", str(name))
+    s = re.sub(r"\s+", " ", s).strip(" .")
+    return s
+
+
+def build_download_filename(
+    output_df: pd.DataFrame, fallback_subject: str = ""
+) -> str:
+    """Compose the download filename per spec: 'YYMMDD - <Subject>.xlsx'.
+    Uses the Subject actually written into the export (so the filename and the
+    data stay in sync), falling back to the user's current setting or the
+    default 'YYYYMMProspection' if the export is empty."""
+    today = datetime.now().strftime("%y%m%d")
+    subject = ""
+    if len(output_df) > 0 and "Subject" in output_df.columns:
+        first_val = output_df["Subject"].iloc[0]
+        if first_val and not pd.isna(first_val):
+            subject = str(first_val).strip()
+    if not subject:
+        subject = (fallback_subject or "").strip() or default_subject()
+    subject = _safe_filename_component(subject) or default_subject()
+    return f"{today} - {subject}.xlsx"
+
+
 def df_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
     """Serialize DataFrame to XLSX bytes matching the Dynamics template layout.
 
@@ -2637,10 +2665,13 @@ def main() -> None:
 
     # Download
     xlsx_bytes = df_to_xlsx_bytes(output_df)
+    download_filename = build_download_filename(
+        output_df, fallback_subject=settings.get("subject", "")
+    )
     st.download_button(
-        label="⬇️ Download opalrt_dynamics_import.xlsx",
+        label=f"⬇️ Download {download_filename}",
         data=xlsx_bytes,
-        file_name="opalrt_dynamics_import.xlsx",
+        file_name=download_filename,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
