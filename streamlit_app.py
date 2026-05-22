@@ -2156,12 +2156,67 @@ def process_dataframe(
     return output_df, errors, mapping, stats
 
 
-def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    """Serialize DataFrame to UTF-8 (BOM) CSV bytes matching Dynamics expectations."""
-    buf = io.StringIO()
-    df.to_csv(buf, index=False, encoding="utf-8")
-    # utf-8-sig BOM helps Excel/Dynamics correctly detect encoding
-    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+def df_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
+    """Serialize DataFrame to XLSX bytes matching the Dynamics template layout.
+
+    - Sheet name 'Lead' (matches the official ImportLeadTemplate.xlsm)
+    - Bold OPAL-RT-navy header row in row 1
+    - Frozen top row + auto-filter so users can sort/filter the export
+    - Sensible per-column widths
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    headers = list(df.columns)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Lead"
+
+    # ----- Styled header row -----
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill("solid", fgColor="002F6C")  # OPAL-RT navy
+    header_align = Alignment(horizontal="left", vertical="center")
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+
+    # ----- Data rows -----
+    for row_idx, (_, row) in enumerate(df.iterrows(), start=2):
+        for col_idx, header in enumerate(headers, start=1):
+            val = row[header]
+            if pd.isna(val):
+                val = ""
+            # Convert everything to string to avoid accidental type coercion
+            # by Excel (e.g. phone numbers losing leading zeros)
+            ws.cell(row=row_idx, column=col_idx, value=str(val) if val != "" else "")
+
+    # ----- Polish: freeze header, auto-filter, column widths -----
+    ws.freeze_panes = "A2"
+    last_col_letter = get_column_letter(len(headers))
+    last_row = max(len(df) + 1, 1)
+    ws.auto_filter.ref = f"A1:{last_col_letter}{last_row}"
+    ws.row_dimensions[1].height = 22
+
+    for col_idx, header in enumerate(headers, start=1):
+        max_len = len(str(header))
+        if len(df) > 0:
+            try:
+                data_max = df[header].astype(str).str.len().max()
+                if pd.notna(data_max):
+                    max_len = max(max_len, int(data_max))
+            except Exception:
+                pass
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 2, 14), 60)
+
+    # ----- Serialize -----
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 # ===========================================================================
@@ -2581,12 +2636,12 @@ def main() -> None:
     st.dataframe(output_df.head(50), use_container_width=True, hide_index=True)
 
     # Download
-    csv_bytes = df_to_csv_bytes(output_df)
+    xlsx_bytes = df_to_xlsx_bytes(output_df)
     st.download_button(
-        label="⬇️ Download opalrt_dynamics_import.csv",
-        data=csv_bytes,
-        file_name="opalrt_dynamics_import.csv",
-        mime="text/csv",
+        label="⬇️ Download opalrt_dynamics_import.xlsx",
+        data=xlsx_bytes,
+        file_name="opalrt_dynamics_import.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
     st.markdown("</div>", unsafe_allow_html=True)
