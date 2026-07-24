@@ -2184,13 +2184,112 @@ def build_download_filename(
     return f"{today} - {subject}.xlsx"
 
 
-def df_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
-    """Serialize DataFrame to XLSX bytes matching the Dynamics template layout.
+TEMPLATE_FILENAME = "ImportLeadTemplate.xlsm"
 
-    - Sheet name 'Lead' (matches the official ImportLeadTemplate.xlsm)
+
+def _template_path() -> str:
+    """Path to the bundled Dynamics template, expected next to this script."""
+    import os
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), TEMPLATE_FILENAME)
+
+
+def template_available() -> bool:
+    import os
+    return os.path.isfile(_template_path())
+
+
+def df_to_dynamics_xlsx_bytes(df: pd.DataFrame) -> bytes:
+    """Serialize the export by INJECTING rows into the official Dynamics
+    template (ImportLeadTemplate.xlsm) rather than building a new workbook.
+
+    Dynamics 365's 'Import from Excel' validates internal metadata that only
+    exists in files derived from its own template:
+      - a signed entity-mapping string in hiddenSheet!A1
+      - the hidden lookup sheets (hiddenMarketSegments, etc.)
+      - ~249 defined names used by dependent dropdowns
+      - the 'Table1' Excel table on the Lead sheet whose range marks the data
+    A from-scratch workbook is rejected with error 0x800608c3 ('Invalid Format
+    in Import File'). By loading the real template, clearing its data rows,
+    writing ours, and updating Table1's range, all of that metadata survives
+    and Dynamics accepts the upload.
+
+    Layout facts (verified against the template):
+      - Row 1 of 'Lead' is empty; headers are in ROW 2; data starts ROW 3.
+      - Columns A..U = the 21 DYNAMICS_COLUMNS in order.
+    Saved via openpyxl without keep_vba → output is macro-free .xlsx content.
+    """
+    import warnings as _warnings
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+
+    with _warnings.catch_warnings():
+        # The template carries x14 conditional-formatting / data-validation
+        # extensions openpyxl can't rewrite; they're for human data entry and
+        # not required by the Dynamics import validator.
+        _warnings.simplefilter("ignore")
+        wb = load_workbook(_template_path())
+
+    ws = wb["Lead"]
+    n_cols = len(DYNAMICS_COLUMNS)
+
+    # --- Sanity-check the header row so we never write misaligned data ---
+    header_row = 2
+    template_headers = [
+        ws.cell(row=header_row, column=c).value for c in range(1, n_cols + 1)
+    ]
+    if template_headers != DYNAMICS_COLUMNS:
+        raise ValueError(
+            "Template header mismatch — the bundled ImportLeadTemplate.xlsm "
+            f"headers in row {header_row} do not match the expected Dynamics "
+            "columns. Re-download the template from Dynamics and replace the "
+            "bundled copy."
+        )
+
+    data_start = header_row + 1  # row 3
+
+    # --- Clear any leftover data rows from the template ---
+    for r in range(data_start, ws.max_row + 1):
+        for c in range(1, n_cols + 1):
+            ws.cell(row=r, column=c).value = None
+
+    # --- Write our rows ---
+    for i, (_, row) in enumerate(df.iterrows()):
+        excel_row = data_start + i
+        for j, header in enumerate(DYNAMICS_COLUMNS, start=1):
+            val = row.get(header, "")
+            if pd.isna(val):
+                val = ""
+            # Strings only: prevents Excel from mangling phone numbers,
+            # checksums, leading zeros, etc.
+            ws.cell(row=excel_row, column=j).value = (
+                str(val) if str(val) != "" else None
+            )
+
+    # --- Update the Excel table range so Dynamics sees exactly our rows ---
+    last_col_letter = get_column_letter(n_cols)
+    # A table must span header + at least one data row
+    last_data_row = max(data_start, header_row + len(df))
+    if len(df) > 0:
+        last_data_row = header_row + len(df)
+    if "Table1" in ws.tables:
+        ws.tables["Table1"].ref = f"A{header_row}:{last_col_letter}{last_data_row}"
+
+    buf = io.BytesIO()
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        wb.save(buf)
+    return buf.getvalue()
+
+
+def df_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
+    """FALLBACK generic XLSX builder (used only if the bundled template is
+    missing). NOTE: Dynamics 365 'Import from Excel' will REJECT this output
+    (error 0x800608c3) because it lacks the template's hidden metadata. It
+    remains useful as a human-readable export.
+
+    - Sheet name 'Lead'
     - Bold OPAL-RT-navy header row in row 1
-    - Frozen top row + auto-filter so users can sort/filter the export
-    - Sensible per-column widths
+    - Frozen top row + auto-filter
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -2245,6 +2344,18 @@ def df_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def export_xlsx_bytes(df: pd.DataFrame) -> Tuple[bytes, bool]:
+    """Produce the download bytes. Returns (bytes, used_template).
+    Prefers template injection (Dynamics-importable); falls back to the
+    generic builder if the bundled template is missing or unreadable."""
+    if template_available():
+        try:
+            return df_to_dynamics_xlsx_bytes(df), True
+        except Exception:
+            pass
+    return df_to_xlsx_bytes(df), False
 
 
 # ===========================================================================
@@ -2664,10 +2775,19 @@ def main() -> None:
     st.dataframe(output_df.head(50), use_container_width=True, hide_index=True)
 
     # Download
-    xlsx_bytes = df_to_xlsx_bytes(output_df)
+    xlsx_bytes, used_template = export_xlsx_bytes(output_df)
     download_filename = build_download_filename(
         output_df, fallback_subject=settings.get("subject", "")
     )
+    if not used_template:
+        st.markdown(
+            '<div class="error-banner">⚠️ The bundled Dynamics template '
+            f'({TEMPLATE_FILENAME}) was not found next to the app, so a generic '
+            'XLSX was generated instead. Dynamics 365 will reject it with '
+            '"Invalid Format in Import File" (0x800608c3). Add the template '
+            'file to the app folder and redeploy to fix this.</div>',
+            unsafe_allow_html=True,
+        )
     st.download_button(
         label=f"⬇️ Download {download_filename}",
         data=xlsx_bytes,
